@@ -14,6 +14,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | [001-repo-bootstrap.md](docs/001-repo-bootstrap.md) | 저장소 구조 결정 근거, 작업 규칙 |
 | [002-phase0-kind-cluster.md](docs/002-phase0-kind-cluster.md) | Phase 0 — kind 클러스터 구성 결정과 검증 결과 |
 | [003-phase1-helm-charts.md](docs/003-phase1-helm-charts.md) | Phase 1 — Helm 차트화, Compose 대비 변경점, SQL Server arm64 실측 |
+| [004-phase2-argocd-gitops.md](docs/004-phase2-argocd-gitops.md) | Phase 2 — ArgoCD GitOps, selfHeal·prune 실측, 자원 추적 방식 |
 
 ## 빠른 시작
 
@@ -25,8 +26,14 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 ./scripts/11-deploy-eshop.sh   # EShopMicroservices 배포
 ./scripts/12-verify-eshop.sh   # 주문 플로우까지 검증
 
+./scripts/20-install-argocd.sh # ArgoCD 설치 + GitOps 전환
+./scripts/21-verify-gitops.sh  # selfHeal · prune 검증
+
 ./scripts/99-teardown.sh       # 클러스터 삭제
 ```
+
+> ArgoCD 도입 이후에는 `kubectl` · `helm` 으로 클러스터를 직접 고치지 않는다.
+> `envs/dev/values.yaml` 을 커밋하면 반영되고, 직접 고친 것은 약 4초 뒤 되돌아온다.
 
 배포 후 접속:
 
@@ -34,6 +41,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 |---|---|
 | http://eshop.localtest.me | 쇼핑몰 화면 |
 | http://api.eshop.localtest.me/catalog-service/products | API 게이트웨이 |
+| http://argocd.localtest.me | ArgoCD UI (`admin` / 설치 스크립트가 출력) |
 
 필요 도구: `docker` `kind` `kubectl` `helm` — `brew install kind helm`
 
@@ -57,7 +65,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | # | 검증 항목 | 상태 |
 |---|---|---|
 | 1 | 커밋 → 빌드 → 레지스트리 푸시 → ArgoCD 자동 배포 (무인) | 미착수 |
-| 2 | `selfHeal: true` — 클러스터 수동 변경분 자동 복구 | 미착수 |
+| 2 | `selfHeal: true` — 클러스터 수동 변경분 자동 복구 | **달성** — 약 4초 만에 복구 ([004](docs/004-phase2-argocd-gitops.md)) |
 | 3 | 이미지 취약점 스캔이 파이프라인을 실제로 차단 | 미착수 |
 | 4 | 인터넷 없이 반입 이미지만으로 배포 (폐쇄망) | 미착수 |
 | 5 | 파트너사별 네임스페이스 · 레지스트리 · RBAC 격리 | 미착수 |
@@ -71,7 +79,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | — | 저장소 초기 구성 | — | — | [001](docs/001-repo-bootstrap.md) | 완료 |
 | 0 | 로컬 kind 클러스터 | [#1](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/1) | [#3](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/3) | [002](docs/002-phase0-kind-cluster.md) | 완료 |
 | 1 | EShopMicroservices Helm 차트화 | [#4](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/4) | [#6](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/6) | [003](docs/003-phase1-helm-charts.md) | 완료 |
-| 2 | ArgoCD GitOps | | | | 대기 |
+| 2 | ArgoCD GitOps | [#7](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/7) | [#8](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/8) | [004](docs/004-phase2-argocd-gitops.md) | 완료 |
 | 3 | Harbor 레지스트리 | | | | 대기 |
 | 4 | CI (빌드·테스트·푸시) | | | | 대기 |
 | 5 | 품질/보안 게이트 | | | | 대기 |
