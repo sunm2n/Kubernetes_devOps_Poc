@@ -1,0 +1,66 @@
+# ArgoCD Helm values — kind 로컬 클러스터용
+#
+# 차트: argo/argo-cd
+# 설치: scripts/20-install-argocd.sh
+
+global:
+  domain: argocd.localtest.me
+
+configs:
+  params:
+    # ArgoCD 서버는 기본적으로 자체 TLS 로 동작한다.
+    # ingress-nginx 뒤에서 평문 HTTP 로 받으려면 이 값이 필요하다.
+    # 로컬 검증용 설정이며, 운영에서는 TLS 를 유지해야 한다.
+    server.insecure: true
+
+  cm:
+    # 감시 주기. 기본값은 3분이다.
+    #
+    # 이 PoC 는 webhook 을 쓸 수 없다. github.com 이 로컬 클러스터로
+    # 요청을 보낼 수 없기 때문이다(PLAN.md의 GitLab vs GitHub 비교 참고).
+    # 따라서 폴링에만 의존하는데, 3분은 검증할 때 기다리기 길다.
+    timeout.reconciliation: 60s
+
+server:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hostname: argocd.localtest.me
+    # server.insecure 로 평문 통신하므로 backend 프로토콜도 HTTP 다.
+    annotations:
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+# 단일 노드 로컬 환경이므로 고가용성 구성을 쓰지 않는다.
+redis-ha:
+  enabled: false
+
+controller:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+repoServer:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+applicationSet:
+  # 환경이 하나뿐이라 아직 필요하지 않다.
+  # Phase 7에서 파트너사별 환경을 늘릴 때 켠다.
+  enabled: false
+
+notifications:
+  enabled: false
+
+dex:
+  # SSO 는 Phase 7에서 Keycloak 과 함께 다룬다.
+  enabled: false
