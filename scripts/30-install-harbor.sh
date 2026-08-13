@@ -80,24 +80,39 @@ echo
 ok "API 응답 확인"
 
 # ── 3. 노드에 레지스트리 신뢰 설정 배포 ──────────────────────────
-# containerd 는 harbor.localtest.me 를 이름으로 해석할 수 없다.
-# localtest.me 는 127.0.0.1 로 해석되는데, 노드 안에서 그것은 노드 자신이다.
-#
-# hosts.toml 로 실제 엔드포인트를 직접 지정한다.
-# kind 네트워크에서는 컨테이너 이름이 해석되므로 Ingress 노드 이름을 그대로 쓴다.
 log "노드에 레지스트리 설정 배포"
 
+INGRESS_IP="$(docker inspect "${INGRESS_NODE}" \
+  --format '{{(index .NetworkSettings.Networks "kind").IPAddress}}' 2>/dev/null || true)"
+[[ -n "${INGRESS_IP}" ]] || die "Ingress 노드 IP 를 찾을 수 없다: ${INGRESS_NODE}"
+ok "Ingress 노드 ${INGRESS_NODE} → ${INGRESS_IP}"
+
 for node in $(kind get nodes --name "${CLUSTER_NAME}"); do
+  # 1) 이름 해석.
+  #
+  # harbor.localtest.me 는 공개 DNS 에서 127.0.0.1 로 해석된다.
+  # 노드 안에서 그것은 노드 자신이라, Ingress 의 hostPort 를 가진
+  # 노드에서만 우연히 통하고 나머지 노드에서는 연결이 되지 않는다.
+  #
+  # 이 항목이 없으면 hosts.toml 만으로는 부족하다.
+  # Harbor 는 401 응답의 Www-Authenticate 헤더에 토큰 발급 주소를
+  # http://harbor.localtest.me/service/token 으로 돌려주는데,
+  # containerd 가 그 주소를 다시 해석해야 하기 때문이다.
+  # 결과적으로 Ingress 노드에 뜬 파드만 이미지를 받고
+  # 다른 노드의 파드는 ImagePullBackOff 에 빠진다.
+  docker exec "${node}" sh -c \
+    "grep -q ' ${HARBOR_HOST}\$' /etc/hosts || echo '${INGRESS_IP} ${HARBOR_HOST}' >> /etc/hosts"
+
+  # 2) 평문 HTTP 허용.
+  #
+  # containerd 는 registry.k8s.io 처럼 기본적으로 HTTPS 를 시도한다.
+  # Harbor 를 TLS 없이 노출했으므로 엔드포인트를 명시해야 한다.
   docker exec "${node}" mkdir -p "/etc/containerd/certs.d/${HARBOR_HOST}"
   docker exec -i "${node}" sh -c "cat > /etc/containerd/certs.d/${HARBOR_HOST}/hosts.toml" <<EOF
-# harbor.localtest.me 로의 요청을 Ingress 노드로 보낸다.
-# 평문 HTTP 이므로 skip_verify 는 필요 없다.
 server = "http://${HARBOR_HOST}"
 
-[host."http://${INGRESS_NODE}:80"]
+[host."http://${HARBOR_HOST}"]
   capabilities = ["pull", "resolve"]
-  # Host 헤더를 유지해야 ingress-nginx 가 Harbor 로 라우팅한다.
-  override_path = false
 EOF
   ok "${node}"
 done
@@ -108,14 +123,26 @@ ok "containerd 재시작 불필요 (요청 시점에 읽는다)"
 # ── 4. 프로젝트 생성 ─────────────────────────────────────────────
 log "프로젝트 생성"
 
+harbor_api() {
+  curl -s --max-time 20 -u "admin:${ADMIN_PW}" -H 'Content-Type: application/json' "$@"
+}
+
+# 프로젝트 메타데이터는 키 하나씩만 받는다.
+# 여러 개를 한 번에 보내면 400 "only allow one key/value pair" 이 돌아온다.
+set_meta() {
+  local project="$1" key="$2" value="$3"
+  harbor_api -o /dev/null -X POST "http://${HARBOR_HOST}/api/v2.0/projects/${project}/metadatas" \
+    -d "{\"${key}\":\"${value}\"}" || true
+  harbor_api -o /dev/null -X PUT "http://${HARBOR_HOST}/api/v2.0/projects/${project}/metadatas/${key}" \
+    -d "{\"${key}\":\"${value}\"}" || true
+}
+
 for entry in "${PROJECTS[@]}"; do
   name="${entry%%:*}"
   public="${entry#*:}"
 
-  CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
-    -u "admin:${ADMIN_PW}" \
+  CODE="$(harbor_api -o /dev/null -w '%{http_code}' \
     -X POST "http://${HARBOR_HOST}/api/v2.0/projects" \
-    -H 'Content-Type: application/json' \
     -d "{\"project_name\":\"${name}\",\"public\":${public},\"metadata\":{\"public\":\"${public}\",\"auto_scan\":\"true\"}}" \
     2>/dev/null || true)"
 
@@ -125,6 +152,46 @@ for entry in "${PROJECTS[@]}"; do
     *)   warn "${name}  생성 실패 HTTP ${CODE}" ;;
   esac
 done
+
+# ── 4-1. 취약점 차단 정책 ────────────────────────────────────────
+# Critical 이상이 있는 이미지는 받을 수 없게 한다.
+# 아키텍처 문서 6p 의 "Harbor 취약점 검사" 가 실제로 배포를 막는 게이트가 된다.
+log "취약점 차단 정책 (erp-hq)"
+
+set_meta erp-hq prevent_vul true
+set_meta erp-hq severity critical
+
+# 프로젝트 자체 허용목록을 쓰도록 명시한다.
+#
+# 기본값은 true 이고, 그 경우 프로젝트에 등록한 허용목록이 아니라
+# 시스템 전역 허용목록(보통 비어 있음)을 본다.
+# 이 값을 바꾸지 않으면 프로젝트에 CVE 를 아무리 등록해도 계속 차단된다.
+set_meta erp-hq reuse_sys_cve_allowlist false
+
+ok "prevent_vul=true · severity=critical · 프로젝트 허용목록 사용"
+
+# ── 4-2. CVE 허용목록 ────────────────────────────────────────────
+# 게이트를 켜면 지금 쓰는 이미지가 그대로 막힌다.
+# .NET 8 베이스 이미지(Debian)와 애플리케이션 의존성에 Critical 이 6건 있다.
+#
+# 운영에서 하는 일과 같은 방식으로 분류해 등록한다.
+# 등록해두면 이 6건은 통과하되, 새로 생기는 Critical 은 그대로 막힌다.
+# 상세와 후속 조치는 docs/005-phase3-harbor-registry.md 참고.
+log "CVE 허용목록 등록"
+
+harbor_api -o /dev/null -X PUT "http://${HARBOR_HOST}/api/v2.0/projects/erp-hq" -d '{
+  "cve_allowlist": {
+    "items": [
+      {"cve_id": "CVE-2026-13221"},
+      {"cve_id": "CVE-2026-42496"},
+      {"cve_id": "CVE-2026-57433"},
+      {"cve_id": "CVE-2026-8376"},
+      {"cve_id": "CVE-2023-45853"},
+      {"cve_id": "CVE-2026-45288"}
+    ]
+  }
+}' || true
+ok "베이스 이미지 5건 + 애플리케이션 의존성 1건"
 
 # ── 5. 결과 ──────────────────────────────────────────────────────
 log "Harbor 파드"
