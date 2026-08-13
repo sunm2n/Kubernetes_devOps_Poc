@@ -16,6 +16,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | [003-phase1-helm-charts.md](docs/003-phase1-helm-charts.md) | Phase 1 — Helm 차트화, Compose 대비 변경점, SQL Server arm64 실측 |
 | [004-phase2-argocd-gitops.md](docs/004-phase2-argocd-gitops.md) | Phase 2 — ArgoCD GitOps, selfHeal·prune 실측, 자원 추적 방식 |
 | [005-phase3-harbor-registry.md](docs/005-phase3-harbor-registry.md) | Phase 3 — Harbor, 취약점 게이트 실증, containerd 레지스트리 신뢰 |
+| [006-phase4-ci-pipeline.md](docs/006-phase4-ci-pipeline.md) | Phase 4 — CI 파이프라인, 캐시된 이미지가 게이트를 거치지 않는 문제 |
 
 ## 빠른 시작
 
@@ -33,6 +34,9 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 ./scripts/30-install-harbor.sh # Harbor 설치 + 취약점 게이트 설정
 ./scripts/31-push-images.sh    # 이미지를 Harbor 로 푸시
 ./scripts/32-verify-harbor.sh  # 스캔 차단 · 파트너 격리 검증
+
+./scripts/40-setup-runner.sh   # CI 러너 설치·등록 (status/stop/remove)
+./scripts/41-verify-ci.sh      # 커밋 → 배포 전 구간 검증
 
 ./scripts/99-teardown.sh       # 클러스터 삭제
 ```
@@ -70,7 +74,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 
 | # | 검증 항목 | 상태 |
 |---|---|---|
-| 1 | 커밋 → 빌드 → 레지스트리 푸시 → ArgoCD 자동 배포 (무인) | 미착수 |
+| 1 | 커밋 → 빌드 → 레지스트리 푸시 → ArgoCD 자동 배포 (무인) | **달성** — 커밋 하나로 약 4분 ([006](docs/006-phase4-ci-pipeline.md)) |
 | 2 | `selfHeal: true` — 클러스터 수동 변경분 자동 복구 | **달성** — 약 4초 만에 복구 ([004](docs/004-phase2-argocd-gitops.md)) |
 | 3 | 이미지 취약점 스캔이 파이프라인을 실제로 차단 | **달성** — Critical 검출 시 pull 거부 ([005](docs/005-phase3-harbor-registry.md)) |
 | 4 | 인터넷 없이 반입 이미지만으로 배포 (폐쇄망) | 미착수 |
@@ -87,7 +91,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | 1 | EShopMicroservices Helm 차트화 | [#4](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/4) | [#6](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/6) | [003](docs/003-phase1-helm-charts.md) | 완료 |
 | 2 | ArgoCD GitOps | [#7](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/7) | [#8](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/8) | [004](docs/004-phase2-argocd-gitops.md) | 완료 |
 | 3 | Harbor 레지스트리 | [#10](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/10) | [#12](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/12) | [005](docs/005-phase3-harbor-registry.md) | 완료 |
-| 4 | CI (빌드·테스트·푸시) | | | | 대기 |
+| 4 | CI (빌드·테스트·푸시) | [#13](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/13) | [#15](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/15) | [006](docs/006-phase4-ci-pipeline.md) | 골격 완료 |
 | 5 | 품질/보안 게이트 | | | | 대기 |
 | 6 | 폐쇄망 시뮬레이션 | | | | 대기 |
 | 7 | 파트너 격리 · 멀티테넌시 | | | | 대기 |
@@ -97,7 +101,8 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | 이슈 | 내용 | 영향 |
 |---|---|---|
 | [#5](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/5) | `yarp-apigateway` · `discount-grpc` · `shopping-web` 에 `/health` 없음 — TCP 프로브로 대체 중 | ArgoCD 동기화 판정의 정확도에 영향. Phase 4 처리 권장 |
-| [#11](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/11) | `Marten 6.4.1` 의 Critical CVE — 현재 허용목록으로 통과시키는 중 | 베이스 이미지와 달리 버전 상향으로 해결 가능. Phase 4 처리 권장 |
+| [#11](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/11) | `Marten` · `Refit` 의 Critical CVE — 현재 허용목록으로 통과시키는 중 | 베이스 이미지와 달리 버전 상향으로 해결 가능. Phase 5 처리 권장 |
+| [#14](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/14) | CI 빌드가 베이스 이미지 pull 실패로 간헐 중단 | 재시도 필요. Phase 6 미러링이 근본 해결 |
 
 ---
 
@@ -122,6 +127,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | 컨테이너 런타임 | Docker Desktop 4.85 (VM 메모리 24 GB 할당) |
 | 클러스터 | kind · Kubernetes v1.36.1 · containerd 2.3.1 · 노드 3대 |
 | 애플리케이션 | .NET 8 · MassTransit 8.1.3 · RabbitMQ · YARP |
+| CI | GitHub Actions · self-hosted 러너 (로컬) |
 
 > SQL Server 이미지는 arm64 빌드가 없어 Rosetta 변환으로 동작한다.
 > 기능에는 문제가 없으나 성능 수치는 신뢰할 수 없다.
