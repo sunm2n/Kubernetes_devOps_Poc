@@ -48,4 +48,4 @@ apps:
   yarp-apigateway:
     replicas: 1
   shopping-web:
-    replicas: 2
+    replicas: 1

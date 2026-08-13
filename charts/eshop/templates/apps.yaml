@@ -54,7 +54,11 @@ spec:
       annotations:
         # ConfigMap·Secret 이 바뀌면 파드를 다시 만든다.
         # 이 주석이 없으면 설정만 바꿔 배포했을 때 파드가 옛 값을 그대로 들고 있는다.
-        checksum/config: {{ toYaml $app | sha256sum }}
+        #
+        # 해시 대상은 config 와 secrets 로 한정한다.
+        # $app 전체를 넣으면 replicas 처럼 파드 내용과 무관한 값이 바뀌어도
+        # 해시가 달라져, 복제본 수만 조정해도 전체 롤링 업데이트가 일어난다.
+        checksum/config: {{ dict "config" $app.config "secrets" $app.secrets | toYaml | sha256sum }}
     spec:
       {{- with $app.waitFor }}
       initContainers:
