@@ -11,6 +11,18 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | 문서 | 내용 |
 |---|---|
 | [PLAN.md](PLAN.md) | **전체 PoC 계획** — 목표 정의, Phase 0~8 단계별 도입, GitLab vs GitHub 비교, 도구 비용 분석 |
+| [001-repo-bootstrap.md](docs/001-repo-bootstrap.md) | 저장소 구조 결정 근거, 작업 규칙 |
+| [002-phase0-kind-cluster.md](docs/002-phase0-kind-cluster.md) | Phase 0 — kind 클러스터 구성 결정과 검증 결과 |
+
+## 빠른 시작
+
+```bash
+./scripts/00-bootstrap.sh   # kind 클러스터 + ingress-nginx 구축 (재실행 가능)
+./scripts/01-verify.sh      # 완료 조건 자동 검증
+./scripts/99-teardown.sh    # 클러스터 삭제
+```
+
+필요 도구: `docker` `kind` `kubectl` `helm` — `brew install kind helm`
 
 ## 관련 저장소
 
@@ -41,7 +53,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | Phase | 내용 | 이슈 | PR | 문서 | 상태 |
 |---|---|---|---|---|---|
 | — | 저장소 초기 구성 | — | — | [001](docs/001-repo-bootstrap.md) | 완료 |
-| 0 | 로컬 kind 클러스터 | | | | 대기 |
+| 0 | 로컬 kind 클러스터 | [#1](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/1) | [#3](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/3) | [002](docs/002-phase0-kind-cluster.md) | 완료 |
 | 1 | EShopMicroservices Helm 차트화 | | | | 대기 |
 | 2 | ArgoCD GitOps | | | | 대기 |
 | 3 | Harbor 레지스트리 | | | | 대기 |
@@ -49,6 +61,12 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | 5 | 품질/보안 게이트 | | | | 대기 |
 | 6 | 폐쇄망 시뮬레이션 | | | | 대기 |
 | 7 | 파트너 격리 · 멀티테넌시 | | | | 대기 |
+
+### 미해결 항목
+
+| 이슈 | 내용 | 영향 |
+|---|---|---|
+| [#2](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/2) | Docker Desktop 메모리가 8 GB로 제한됨 (호스트는 64 GB) | Phase 3에서 한계 도달, Phase 6는 불가 |
 
 ---
 

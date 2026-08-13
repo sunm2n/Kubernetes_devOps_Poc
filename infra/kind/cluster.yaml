@@ -1,0 +1,39 @@
+# kind 클러스터 정의 — ERP DevOps PoC 개발계
+#
+# 노드 3대 구성:
+#   erp-poc-control-plane  제어 평면
+#   erp-poc-worker         워크로드 + Ingress 진입점 (호스트 80/443 매핑)
+#   erp-poc-worker2        워크로드
+#
+# 생성:  scripts/00-bootstrap.sh
+# 삭제:  scripts/99-teardown.sh
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: erp-poc
+
+nodes:
+  - role: control-plane
+    # 노드 이미지는 digest까지 고정한다.
+    # 태그만 쓰면 업스트림이 갱신될 때 재구축 결과가 달라진다.
+    # (앱 저장소에서 postgres:latest 가 18로 올라가며 기동 실패했던 것과 같은 유형의 사고)
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
+
+  # Ingress 전용 워커.
+  # 호스트의 80/443 을 이 노드로 직결해 브라우저에서 바로 접근할 수 있게 한다.
+  # ingress-nginx 컨트롤러는 nodeSelector(ingress-ready=true)로 이 노드에 고정된다.
+  #
+  # 제어 평면이 아니라 워커에 두는 이유:
+  # 제어 평면에는 node-role.kubernetes.io/control-plane:NoSchedule 테인트가 걸려 있어
+  # toleration을 추가로 관리해야 한다. 노드가 3대인 구성에서는 워커를 쓰는 편이 단순하다.
+  - role: worker
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+
+  - role: worker
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
