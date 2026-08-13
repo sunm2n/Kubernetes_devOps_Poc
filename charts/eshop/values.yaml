@@ -1,0 +1,225 @@
+# EShopMicroservices — 기본 값
+#
+# Docker Compose 구성(docker-compose.yml + docker-compose.override.yml)을
+# Kubernetes 자원으로 옮긴 것이다.
+#
+# Compose 와 달라진 부분:
+#   - 서비스 이름에서 점을 뺐다. Kubernetes Service 이름은 DNS-1035 레이블이라
+#     점을 쓸 수 없다.  catalog.api → catalog-api
+#   - 호스트 포트 매핑(6000~6005)이 없다. 외부 진입은 Ingress 하나로 통일한다.
+#   - 접속 문자열은 Secret, 나머지 설정은 ConfigMap 으로 나눴다.
+
+global:
+  # 이미지 태그. scripts/10-build-images.sh 가 이 태그로 빌드해
+  # kind 클러스터에 직접 주입한다. 레지스트리는 Phase 3에서 도입한다.
+  imageTag: local
+
+  # 이미지를 레지스트리에서 받지 않고 노드에 주입하므로 Never 에 가깝지만,
+  # IfNotPresent 로 두어 Phase 3 전환 시 값만 바꾸면 되게 한다.
+  imagePullPolicy: IfNotPresent
+
+  # Development 가 필요하다. 두 가지가 이 값에 걸려 있다.
+  #   - Catalog: InitializeMartenWith<CatalogInitialData>() 로 상품 시드
+  #   - Ordering: InitialiseDatabaseAsync() 로 스키마 생성·시드
+  # Production 으로 두면 DB 가 비어 화면에 아무것도 뜨지 않는다.
+  aspnetcoreEnvironment: Development
+
+ingress:
+  enabled: true
+  className: nginx
+  # localtest.me 와 하위 도메인은 공개 DNS 에서 127.0.0.1 로 해석된다.
+  # hosts 파일을 건드리지 않아도 된다.
+  host: eshop.localtest.me
+  # API 게이트웨이를 별도 호스트로 노출한다. 디버깅과 Phase 4 검증에 쓴다.
+  gatewayHost: api.eshop.localtest.me
+
+# ──────────────────────────────────────────────────────────────────
+# 애플리케이션 6개
+# ──────────────────────────────────────────────────────────────────
+#
+# 각 항목이 Deployment · Service · ConfigMap · Secret 한 벌을 만든다.
+#
+#   config    민감하지 않은 설정 → ConfigMap → envFrom
+#   secrets   접속 문자열·비밀번호 → Secret → envFrom
+#   waitFor   기동 전 TCP 로 기다릴 대상. initContainer 가 처리한다
+#   probe     http 는 경로가 필요하고, tcp 는 포트만 확인한다
+apps:
+  catalog-api:
+    image: eshop/catalog-api
+    replicas: 1
+    port: 8080
+    waitFor:
+      - catalogdb:5432
+    probe:
+      type: http
+      path: /health
+    config:
+      ASPNETCORE_HTTP_PORTS: "8080"
+    secrets:
+      ConnectionStrings__Database: "Server=catalogdb;Port=5432;Database=CatalogDb;User Id=postgres;Password=postgres;Include Error Detail=true"
+
+  basket-api:
+    image: eshop/basket-api
+    replicas: 1
+    port: 8080
+    waitFor:
+      - basketdb:5432
+      - distributedcache:6379
+      - messagebroker:5672
+      - discount-grpc:8080
+    probe:
+      type: http
+      path: /health
+    config:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      # Discount 는 평문 HTTP/2(h2c) 로 호출한다.
+      # 앱 쪽에서 Http2UnencryptedSupport 스위치를 켜두었다.
+      GrpcSettings__DiscountUrl: "http://discount-grpc:8080"
+      MessageBroker__Host: "amqp://messagebroker:5672"
+    secrets:
+      ConnectionStrings__Database: "Server=basketdb;Port=5432;Database=BasketDb;User Id=postgres;Password=postgres;Include Error Detail=true"
+      ConnectionStrings__Redis: "distributedcache:6379"
+      MessageBroker__UserName: "guest"
+      MessageBroker__Password: "guest"
+
+  discount-grpc:
+    image: eshop/discount-grpc
+    replicas: 1
+    port: 8080
+    # HTTP/2 전용이라 HTTP 프로브를 쓸 수 없고 /health 엔드포인트도 없다.
+    probe:
+      type: tcp
+    config:
+      ASPNETCORE_HTTP_PORTS: "8080"
+    secrets:
+      # SQLite 파일 DB. 볼륨을 붙이지 않는다.
+      # 마이그레이션의 HasData 가 기동할 때마다 쿠폰을 다시 심으므로
+      # 파드가 재생성돼도 초기 상태로 복구된다.
+      ConnectionStrings__Database: "Data Source=discountdb"
+
+  ordering-api:
+    image: eshop/ordering-api
+    replicas: 1
+    port: 8080
+    waitFor:
+      - orderdb:1433
+      - messagebroker:5672
+    probe:
+      type: http
+      path: /health
+    config:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      MessageBroker__Host: "amqp://messagebroker:5672"
+      FeatureManagement__OrderFullfilment: "false"
+    secrets:
+      ConnectionStrings__Database: "Server=orderdb;Database=OrderDb;User Id=sa;Password=SwN12345678;Encrypt=False;TrustServerCertificate=True"
+      MessageBroker__UserName: "guest"
+      MessageBroker__Password: "guest"
+
+  yarp-apigateway:
+    image: eshop/yarp-apigateway
+    replicas: 1
+    port: 8080
+    # YARP 자체에는 health 엔드포인트가 없다.
+    probe:
+      type: tcp
+    config:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      # appsettings.json 의 목적지가 catalog.api 처럼 점이 든 이름이라
+      # Kubernetes Service 이름과 맞지 않는다. 환경변수로 덮어쓴다.
+      # ASP.NET Core 설정에서 __ 는 : 에 해당한다.
+      ReverseProxy__Clusters__catalog-cluster__Destinations__destination1__Address: "http://catalog-api:8080"
+      ReverseProxy__Clusters__basket-cluster__Destinations__destination1__Address: "http://basket-api:8080"
+      ReverseProxy__Clusters__ordering-cluster__Destinations__destination1__Address: "http://ordering-api:8080"
+
+  shopping-web:
+    image: eshop/shopping-web
+    replicas: 1
+    port: 8080
+    probe:
+      type: tcp
+    config:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ApiSettings__GatewayAddress: "http://yarp-apigateway:8080"
+
+# ──────────────────────────────────────────────────────────────────
+# 인프라 5종
+# ──────────────────────────────────────────────────────────────────
+#
+# 서드파티 차트 대신 직접 정의한다.
+#   - 폐쇄망(Phase 6)에서 반입할 이미지가 늘어나지 않는다
+#   - 차트 의존성의 라이선스를 따로 감사하지 않아도 된다
+#   - 구성이 단순해 문제가 생겼을 때 원인을 찾기 쉽다
+infra:
+  catalogdb:
+    enabled: true
+    image: postgres:17
+    port: 5432
+    storage: 1Gi
+    env:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: CatalogDb
+      # 볼륨 루트에 직접 초기화하지 않도록 하위 디렉터리를 지정한다.
+      # Postgres 18부터 데이터 디렉터리 구조가 바뀌어, 이 값을 명시하지 않으면
+      # 이미지 버전이 올라갔을 때 기존 볼륨과 충돌한다.
+      PGDATA: /var/lib/postgresql/data/pgdata
+
+  basketdb:
+    enabled: true
+    image: postgres:17
+    port: 5432
+    storage: 1Gi
+    env:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: BasketDb
+      PGDATA: /var/lib/postgresql/data/pgdata
+
+  distributedcache:
+    enabled: true
+    image: redis:7.4-alpine
+    port: 6379
+    # 캐시이므로 영속화하지 않는다. 유실되면 원본 DB 에서 다시 채워진다.
+    storage: ""
+
+  orderdb:
+    enabled: true
+    # arm64 이미지가 없어 Rosetta 변환으로 동작한다. 성능 수치는 신뢰할 수 없다.
+    # 상세: docs/003-phase1-helm-charts.md
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    port: 1433
+    storage: 4Gi
+    env:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: SwN12345678
+
+  messagebroker:
+    enabled: true
+    image: rabbitmq:4.1-management
+    port: 5672
+    managementPort: 15672
+    storage: 1Gi
+    env:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+# 기동 대기 initContainer 가 쓰는 이미지.
+# nc 로 TCP 연결만 확인한다.
+waitImage: busybox:1.37
+
+# 리소스 요청량. 실측 전 참고치이며 Phase 8에서 조정한다.
+resources:
+  app:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+  db:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+  mssql:
+    requests:
+      cpu: 200m
+      memory: 1Gi

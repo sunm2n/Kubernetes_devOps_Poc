@@ -1,0 +1,43 @@
+{{- if .Values.ingress.enabled }}
+{{/*
+외부 진입점.
+Compose 는 서비스마다 호스트 포트(6000~6005)를 열었지만,
+Kubernetes 에서는 Ingress 하나로 모으고 내부 통신은 Service 이름으로 처리한다.
+
+  eshop.localtest.me      → shopping-web     (사용자 화면)
+  api.eshop.localtest.me  → yarp-apigateway  (API 직접 호출·디버깅용)
+
+게이트웨이를 따로 노출하는 이유는 Phase 4 에서 파이프라인이 배포 결과를
+API 로 확인할 때 화면을 거치지 않아도 되게 하기 위해서다.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: eshop
+  labels:
+    {{- include "eshop.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: shopping-web
+                port:
+                  {{/* 키에 하이픈이 있어 점 표기를 쓸 수 없다. index 로 접근한다 */}}
+                  number: {{ index .Values.apps "shopping-web" "port" }}
+    - host: {{ .Values.ingress.gatewayHost }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: yarp-apigateway
+                port:
+                  number: {{ index .Values.apps "yarp-apigateway" "port" }}
+{{- end }}

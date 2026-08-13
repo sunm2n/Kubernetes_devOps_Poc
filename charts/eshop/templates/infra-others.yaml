@@ -1,0 +1,248 @@
+{{/*
+Redis · SQL Server · RabbitMQ.
+Postgres 와 달리 구성이 서로 달라 하나씩 정의한다.
+*/}}
+
+{{- $redis := .Values.infra.distributedcache }}
+{{- if $redis.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: distributedcache
+  labels:
+    {{- include "eshop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: distributedcache
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "eshop.selectorLabels" (dict "Chart" .Chart "Release" .Release "component" "distributedcache") | nindent 4 }}
+  ports:
+    - name: redis
+      port: {{ $redis.port }}
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: distributedcache
+  labels:
+    {{- include "eshop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: distributedcache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "eshop.selectorLabels" (dict "Chart" .Chart "Release" .Release "component" "distributedcache") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "eshop.selectorLabels" (dict "Chart" .Chart "Release" .Release "component" "distributedcache") | nindent 8 }}
+    spec:
+      containers:
+        - name: redis
+          image: {{ $redis.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: redis
+              containerPort: {{ $redis.port }}
+          # 캐시라 볼륨을 붙이지 않는다.
+          # 파드가 사라지면 캐시도 사라지지만, Basket 은 Postgres 를 원본으로 두고
+          # 캐시를 덧씌우는 구조(CachedBasketRepository)라 다시 채워진다.
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources.db | nindent 12 }}
+{{- end }}
+
+{{- $mssql := .Values.infra.orderdb }}
+{{- if $mssql.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orderdb
+  labels:
+    {{- include "eshop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: orderdb
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "eshop.selectorLabels" (dict "Chart" .Chart "Release" .Release "component" "orderdb") | nindent 4 }}
+  ports:
+    - name: mssql
+      port: {{ $mssql.port }}
+      targetPort: mssql
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: orderdb-secret
+  labels:
+    {{- include "eshop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: orderdb
+type: Opaque
+stringData:
+  MSSQL_SA_PASSWORD: {{ $mssql.env.MSSQL_SA_PASSWORD | quote }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: orderdb
+  labels:
+    {{- include "eshop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: orderdb
+spec:
+  serviceName: orderdb
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "eshop.selectorLabels" (dict "Chart" .Chart "Release" .Release "component" "orderdb") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "eshop.selectorLabels" (dict "Chart" .Chart "Release" .Release "component" "orderdb") | nindent 8 }}
+    spec:
+      securityContext:
+        # SQL Server 컨테이너는 uid 10001(mssql)로 동작한다.
+        fsGroup: 10001
+      containers:
+        - name: mssql
+          # arm64 이미지가 존재하지 않아 Rosetta 변환으로 실행된다.
+          # 동작에는 문제가 없으나 성능 수치는 신뢰할 수 없다.
+          image: {{ $mssql.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: mssql
+              containerPort: {{ $mssql.port }}
+          env:
+            - name: ACCEPT_EULA
+              value: {{ $mssql.env.ACCEPT_EULA | quote }}
+            - name: MSSQL_PID
+              value: {{ $mssql.env.MSSQL_PID | quote }}
+            - name: MSSQL_SA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: orderdb-secret
+                  key: MSSQL_SA_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /var/opt/mssql
+          # 변환 실행이라 기동이 느리다. 실측 약 2분.
+          # 최대 5분(60 × 5초)까지 기다린다.
+          startupProbe:
+            tcpSocket:
+              port: mssql
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket:
+              port: mssql
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.resources.mssql | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ $mssql.storage }}
+{{- end }}
+
+{{- $mq := .Values.infra.messagebroker }}
+{{- if $mq.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: messagebroker
+  labels:
+    {{- include "eshop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: messagebroker
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "eshop.selectorLabels" (dict "Chart" .Chart "Release" .Release "component" "messagebroker") | nindent 4 }}
+  ports:
+    - name: amqp
+      port: {{ $mq.port }}
+      targetPort: amqp
+    - name: management
+      port: {{ $mq.managementPort }}
+      targetPort: management
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: messagebroker-secret
+  labels:
+    {{- include "eshop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: messagebroker
+type: Opaque
+stringData:
+  RABBITMQ_DEFAULT_USER: {{ $mq.env.RABBITMQ_DEFAULT_USER | quote }}
+  RABBITMQ_DEFAULT_PASS: {{ $mq.env.RABBITMQ_DEFAULT_PASS | quote }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: messagebroker
+  labels:
+    {{- include "eshop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: messagebroker
+spec:
+  serviceName: messagebroker
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "eshop.selectorLabels" (dict "Chart" .Chart "Release" .Release "component" "messagebroker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "eshop.selectorLabels" (dict "Chart" .Chart "Release" .Release "component" "messagebroker") | nindent 8 }}
+    spec:
+      securityContext:
+        # rabbitmq 이미지의 실행 사용자(uid 999)
+        fsGroup: 999
+      containers:
+        - name: rabbitmq
+          image: {{ $mq.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: amqp
+              containerPort: {{ $mq.port }}
+            - name: management
+              containerPort: {{ $mq.managementPort }}
+          envFrom:
+            - secretRef:
+                name: messagebroker-secret
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/rabbitmq
+          # rabbitmq-diagnostics 는 노드가 실제로 요청을 처리할 수 있는지 확인한다.
+          # AMQP 포트는 노드 기동 완료 전에도 열려 있어 TCP 검사만으로는 부족하다.
+          startupProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            periodSeconds: 10
+            failureThreshold: 18
+          readinessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+            periodSeconds: 30
+            timeoutSeconds: 10
+          resources:
+            {{- toYaml .Values.resources.db | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ $mq.storage }}
+{{- end }}
