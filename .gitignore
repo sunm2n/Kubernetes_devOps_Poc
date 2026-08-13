@@ -1,0 +1,66 @@
+# ── 애플리케이션 소스 (별도 저장소) ──────────────────────────────
+# EShopMicroservices는 sunm2n/net8_Microservices 로 독립 관리한다.
+# 이 저장소는 인프라·GitOps·문서만 다룬다. (PLAN.md Phase 2 레포 분리 원칙)
+EShopMicroservices-main/
+
+# ── OS ───────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# ── 에디터 / IDE ─────────────────────────────────────────────────
+.idea/
+.vs/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+*.swp
+*.swo
+*~
+
+# ── 시크릿 · 자격증명 (절대 커밋 금지) ───────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!**/testdata/*.key
+*.p12
+*.pfx
+secrets.yaml
+secrets.yml
+*-secret.yaml
+kubeconfig
+*.kubeconfig
+.kube/
+sa-*.json
+
+# ── Kubernetes / Helm ────────────────────────────────────────────
+charts/**/charts/
+charts/**/Chart.lock
+*.tgz
+rendered/
+manifests-rendered/
+
+# ── 폐쇄망 반출입 산출물 (용량 큼, Git 대상 아님) ────────────────
+airgap/bundles/
+airgap/**/*.tar
+airgap/**/*.tar.gz
+images/*.tar
+
+# ── 빌드 산출물 ──────────────────────────────────────────────────
+bin/
+obj/
+dist/
+build/
+node_modules/
+
+# ── 로그 · 임시 파일 ─────────────────────────────────────────────
+*.log
+logs/
+tmp/
+.tmp/
+scratch/
