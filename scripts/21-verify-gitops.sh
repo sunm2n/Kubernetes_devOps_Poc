@@ -28,6 +28,22 @@ app_field() {
   kubectl get application "${APP_NAME}" -n "${ARGOCD_NS}" -o jsonpath="{$1}" 2>/dev/null || true
 }
 
+# 종료 중인 파드가 사라질 때까지 기다린다.
+#
+# selfHeal 검증은 복제본을 일부러 5개로 늘렸다가 되돌린다.
+# 그때 생긴 파드들이 정리되기 전에 개수를 세면, 클러스터는 정상인데
+# 기대보다 많은 파드가 잡혀 검증이 실패한다.
+wait_settled() {
+  for _ in $(seq 1 45); do
+    TERMINATING=$(kubectl get pods -n "${APP_NS}" \
+      -o jsonpath='{range .items[?(@.metadata.deletionTimestamp)]}{.metadata.name}{"\n"}{end}' \
+      2>/dev/null | grep -c . || true)
+    [[ "${TERMINATING}" == "0" ]] && return 0
+    sleep 2
+  done
+  return 1
+}
+
 # ── 조건 1. Application 이 Synced · Healthy ──────────────────────
 log "조건 1 — Application 상태"
 
@@ -95,6 +111,13 @@ fi
 
 # ── 조건 4. 파드 11개 정상 ───────────────────────────────────────
 log "조건 4 — ArgoCD 관리 하에서 애플리케이션 정상"
+
+# 앞선 selfHeal 검증이 만든 여분 파드가 정리될 때까지 기다린다.
+if wait_settled; then
+  info "클러스터 안정화 완료"
+else
+  info "종료 중인 파드가 남아 있다 — 아래 개수가 기대보다 클 수 있다"
+fi
 
 READY=$(kubectl get pods -n "${APP_NS}" --no-headers 2>/dev/null \
   | awk '{split($2, a, "/"); if (a[1] == a[2] && a[1] > 0 && $3 == "Running") c++} END {print c+0}')
