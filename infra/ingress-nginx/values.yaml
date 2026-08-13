@@ -1,0 +1,51 @@
+# ingress-nginx Helm values — kind 로컬 클러스터용
+#
+# 차트: ingress-nginx/ingress-nginx
+# 설치: scripts/00-bootstrap.sh
+controller:
+  # Ingress 전용 워커 노드에 고정한다.
+  # 이 라벨은 부트스트랩 스크립트가 erp-poc-worker 에 부여하며,
+  # 해당 노드만 호스트 80/443 과 연결되어 있다. (infra/kind/cluster.yaml)
+  nodeSelector:
+    ingress-ready: "true"
+
+  # 노드의 80/443 을 컨트롤러 파드가 직접 점유한다.
+  # kind 의 extraPortMappings 와 이어져 호스트 → 노드 → 파드 경로가 완성된다.
+  # 클라우드 LoadBalancer 가 없는 로컬 환경에서 쓰는 방식이다.
+  hostPort:
+    enabled: true
+    ports:
+      http: 80
+      https: 443
+
+  # hostPort 로 트래픽을 받으므로 Service 는 클러스터 내부용으로만 둔다.
+  service:
+    type: ClusterIP
+
+  # ingressClassName 을 지정하지 않은 Ingress 도 처리한다.
+  # PoC 매니페스트를 단순하게 유지하기 위한 설정이며, 운영 환경에서는 끄는 편이 맞다.
+  watchIngressWithoutClass: true
+
+  ingressClassResource:
+    name: nginx
+    default: true
+
+  # 단일 노드에 고정되므로 복제본은 1개다.
+  replicaCount: 1
+
+  # 어드미션 웹훅은 잘못된 Ingress 를 사전에 거른다.
+  # Phase 5 의 매니페스트 검증과 목적이 같아 켜둔 채로 간다.
+  admissionWebhooks:
+    enabled: true
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # Phase 8 관측성 단계에서 Prometheus 가 수집할 메트릭 엔드포인트.
+  # ServiceMonitor 는 Prometheus Operator 설치 후 켠다.
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false

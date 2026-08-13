@@ -1,0 +1,87 @@
+# Phase 0 검증용 샘플 워크로드
+#
+# 클러스터 자체를 확인하기 위한 것이며 애플리케이션 배포와는 무관하다.
+# 검증이 끝나면 scripts/01-verify.sh 가 네임스페이스째 삭제한다.
+#
+# whoami 는 요청을 받은 파드의 호스트명과 헤더를 그대로 돌려준다.
+# 응답에 찍힌 호스트명으로 어느 파드까지 트래픽이 닿았는지 확인할 수 있다.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: poc-verify
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whoami
+  namespace: poc-verify
+spec:
+  # 복제본 2개 — 워커 노드 2대에 각각 배치되는지 함께 확인한다.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: whoami
+  template:
+    metadata:
+      labels:
+        app: whoami
+    spec:
+      # 같은 노드에 몰리지 않도록 분산한다.
+      # 노드가 여러 대인 구성이 실제로 동작하는지 보기 위한 설정이다.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: whoami
+      containers:
+        - name: whoami
+          image: traefik/whoami:v1.11
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 1
+            periodSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami
+  namespace: poc-verify
+spec:
+  selector:
+    app: whoami
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: whoami
+  namespace: poc-verify
+spec:
+  ingressClassName: nginx
+  rules:
+    # localtest.me 와 그 하위 도메인은 공개 DNS 에서 127.0.0.1 로 해석된다.
+    # hosts 파일을 건드리지 않고 호스트 기반 라우팅을 시험할 수 있다.
+    - host: whoami.localtest.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: whoami
+                port:
+                  number: 80
