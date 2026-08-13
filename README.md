@@ -15,6 +15,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | [002-phase0-kind-cluster.md](docs/002-phase0-kind-cluster.md) | Phase 0 — kind 클러스터 구성 결정과 검증 결과 |
 | [003-phase1-helm-charts.md](docs/003-phase1-helm-charts.md) | Phase 1 — Helm 차트화, Compose 대비 변경점, SQL Server arm64 실측 |
 | [004-phase2-argocd-gitops.md](docs/004-phase2-argocd-gitops.md) | Phase 2 — ArgoCD GitOps, selfHeal·prune 실측, 자원 추적 방식 |
+| [005-phase3-harbor-registry.md](docs/005-phase3-harbor-registry.md) | Phase 3 — Harbor, 취약점 게이트 실증, containerd 레지스트리 신뢰 |
 
 ## 빠른 시작
 
@@ -29,6 +30,10 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 ./scripts/20-install-argocd.sh # ArgoCD 설치 + GitOps 전환
 ./scripts/21-verify-gitops.sh  # selfHeal · prune 검증
 
+./scripts/30-install-harbor.sh # Harbor 설치 + 취약점 게이트 설정
+./scripts/31-push-images.sh    # 이미지를 Harbor 로 푸시
+./scripts/32-verify-harbor.sh  # 스캔 차단 · 파트너 격리 검증
+
 ./scripts/99-teardown.sh       # 클러스터 삭제
 ```
 
@@ -42,6 +47,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | http://eshop.localtest.me | 쇼핑몰 화면 |
 | http://api.eshop.localtest.me/catalog-service/products | API 게이트웨이 |
 | http://argocd.localtest.me | ArgoCD UI (`admin` / 설치 스크립트가 출력) |
+| http://harbor.localtest.me | Harbor UI (`admin` / `Harbor12345`) |
 
 필요 도구: `docker` `kind` `kubectl` `helm` — `brew install kind helm`
 
@@ -66,7 +72,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 |---|---|---|
 | 1 | 커밋 → 빌드 → 레지스트리 푸시 → ArgoCD 자동 배포 (무인) | 미착수 |
 | 2 | `selfHeal: true` — 클러스터 수동 변경분 자동 복구 | **달성** — 약 4초 만에 복구 ([004](docs/004-phase2-argocd-gitops.md)) |
-| 3 | 이미지 취약점 스캔이 파이프라인을 실제로 차단 | 미착수 |
+| 3 | 이미지 취약점 스캔이 파이프라인을 실제로 차단 | **달성** — Critical 검출 시 pull 거부 ([005](docs/005-phase3-harbor-registry.md)) |
 | 4 | 인터넷 없이 반입 이미지만으로 배포 (폐쇄망) | 미착수 |
 | 5 | 파트너사별 네임스페이스 · 레지스트리 · RBAC 격리 | 미착수 |
 
@@ -80,7 +86,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | 0 | 로컬 kind 클러스터 | [#1](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/1) | [#3](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/3) | [002](docs/002-phase0-kind-cluster.md) | 완료 |
 | 1 | EShopMicroservices Helm 차트화 | [#4](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/4) | [#6](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/6) | [003](docs/003-phase1-helm-charts.md) | 완료 |
 | 2 | ArgoCD GitOps | [#7](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/7) | [#8](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/8) | [004](docs/004-phase2-argocd-gitops.md) | 완료 |
-| 3 | Harbor 레지스트리 | | | | 대기 |
+| 3 | Harbor 레지스트리 | [#10](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/10) | [#12](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/12) | [005](docs/005-phase3-harbor-registry.md) | 완료 |
 | 4 | CI (빌드·테스트·푸시) | | | | 대기 |
 | 5 | 품질/보안 게이트 | | | | 대기 |
 | 6 | 폐쇄망 시뮬레이션 | | | | 대기 |
@@ -90,7 +96,8 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 
 | 이슈 | 내용 | 영향 |
 |---|---|---|
-| [#5](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/5) | `yarp-apigateway` · `discount-grpc` · `shopping-web` 에 `/health` 없음 — TCP 프로브로 대체 중 | Phase 2에서 ArgoCD 동기화 판정의 정확도에 영향. Phase 4 처리 권장 |
+| [#5](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/5) | `yarp-apigateway` · `discount-grpc` · `shopping-web` 에 `/health` 없음 — TCP 프로브로 대체 중 | ArgoCD 동기화 판정의 정확도에 영향. Phase 4 처리 권장 |
+| [#11](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/11) | `Marten 6.4.1` 의 Critical CVE — 현재 허용목록으로 통과시키는 중 | 베이스 이미지와 달리 버전 상향으로 해결 가능. Phase 4 처리 권장 |
 
 ---
 

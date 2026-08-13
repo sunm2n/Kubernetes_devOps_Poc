@@ -11,6 +11,20 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: erp-poc
 
+# containerd 가 레지스트리별 설정을 읽도록 경로를 지정한다.
+#
+# 기본값은 빈 문자열이라 /etc/containerd/certs.d/ 를 아예 보지 않는다.
+# 이 값이 없으면 Harbor(Phase 3)에서 이미지를 받아올 수 없다.
+#
+# 노드 생성 시점에만 적용되므로 나중에 추가하려면 클러스터를 다시 만들어야 한다.
+# 반면 이 경로 아래의 hosts.toml 은 요청마다 읽히므로,
+# 레지스트리를 추가할 때는 파일만 넣으면 되고 containerd 재시작이 필요 없다.
+#   → scripts/30-install-harbor.sh 가 hosts.toml 을 배포한다
+containerdConfigPatches:
+  - |-
+    [plugins.'io.containerd.cri.v1.images'.registry]
+      config_path = '/etc/containerd/certs.d'
+
 nodes:
   - role: control-plane
     # 노드 이미지는 digest까지 고정한다.
