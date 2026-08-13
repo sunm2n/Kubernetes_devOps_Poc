@@ -1,0 +1,19 @@
+apiVersion: v2
+name: eshop
+description: EShopMicroservices — .NET 8 마이크로서비스 6개와 인프라 5종
+type: application
+
+# 차트 버전. 매니페스트 구조가 바뀔 때 올린다.
+version: 0.1.0
+
+# 배포 대상 애플리케이션 버전.
+# 앱 저장소(sunm2n/net8_Microservices)의 릴리스와 대응한다.
+appVersion: "1.0.0"
+
+keywords:
+  - eshop
+  - microservices
+  - dotnet
+
+sources:
+  - https://github.com/sunm2n/net8_Microservices

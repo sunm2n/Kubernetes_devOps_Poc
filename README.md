@@ -13,16 +13,32 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | [PLAN.md](PLAN.md) | **전체 PoC 계획** — 목표 정의, Phase 0~8 단계별 도입, GitLab vs GitHub 비교, 도구 비용 분석 |
 | [001-repo-bootstrap.md](docs/001-repo-bootstrap.md) | 저장소 구조 결정 근거, 작업 규칙 |
 | [002-phase0-kind-cluster.md](docs/002-phase0-kind-cluster.md) | Phase 0 — kind 클러스터 구성 결정과 검증 결과 |
+| [003-phase1-helm-charts.md](docs/003-phase1-helm-charts.md) | Phase 1 — Helm 차트화, Compose 대비 변경점, SQL Server arm64 실측 |
 
 ## 빠른 시작
 
 ```bash
-./scripts/00-bootstrap.sh   # kind 클러스터 + ingress-nginx 구축 (재실행 가능)
-./scripts/01-verify.sh      # 완료 조건 자동 검증
-./scripts/99-teardown.sh    # 클러스터 삭제
+./scripts/00-bootstrap.sh      # kind 클러스터 + ingress-nginx 구축
+./scripts/01-verify.sh         # 클러스터 검증
+
+./scripts/10-build-images.sh   # 앱 이미지 6개 빌드 후 클러스터 주입
+./scripts/11-deploy-eshop.sh   # EShopMicroservices 배포
+./scripts/12-verify-eshop.sh   # 주문 플로우까지 검증
+
+./scripts/99-teardown.sh       # 클러스터 삭제
 ```
 
+배포 후 접속:
+
+| 주소 | 내용 |
+|---|---|
+| http://eshop.localtest.me | 쇼핑몰 화면 |
+| http://api.eshop.localtest.me/catalog-service/products | API 게이트웨이 |
+
 필요 도구: `docker` `kind` `kubectl` `helm` — `brew install kind helm`
+
+애플리케이션 소스는 별도 저장소다. 기본 경로는 `EShopMicroservices-main/`이며
+`ESHOP_SRC` 환경변수로 바꿀 수 있다.
 
 ## 관련 저장소
 
@@ -54,7 +70,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 |---|---|---|---|---|---|
 | — | 저장소 초기 구성 | — | — | [001](docs/001-repo-bootstrap.md) | 완료 |
 | 0 | 로컬 kind 클러스터 | [#1](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/1) | [#3](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/3) | [002](docs/002-phase0-kind-cluster.md) | 완료 |
-| 1 | EShopMicroservices Helm 차트화 | | | | 대기 |
+| 1 | EShopMicroservices Helm 차트화 | [#4](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/4) | [#6](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/6) | [003](docs/003-phase1-helm-charts.md) | 완료 |
 | 2 | ArgoCD GitOps | | | | 대기 |
 | 3 | Harbor 레지스트리 | | | | 대기 |
 | 4 | CI (빌드·테스트·푸시) | | | | 대기 |
@@ -66,7 +82,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 
 | 이슈 | 내용 | 영향 |
 |---|---|---|
-| [#2](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/2) | Docker Desktop 메모리가 8 GB로 제한됨 (호스트는 64 GB) | Phase 3에서 한계 도달, Phase 6는 불가 |
+| [#5](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/5) | `yarp-apigateway` · `discount-grpc` · `shopping-web` 에 `/health` 없음 — TCP 프로브로 대체 중 | Phase 2에서 ArgoCD 동기화 판정의 정확도에 영향. Phase 4 처리 권장 |
 
 ---
 
@@ -88,7 +104,10 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | 항목 | 값 |
 |---|---|
 | 개발 머신 | macOS (Apple Silicon, arm64) · 12 Core / 64 GB |
-| 컨테이너 런타임 | Docker Desktop 29.6 |
+| 컨테이너 런타임 | Docker Desktop 4.85 (VM 메모리 24 GB 할당) |
+| 클러스터 | kind · Kubernetes v1.36.1 · containerd 2.3.1 · 노드 3대 |
 | 애플리케이션 | .NET 8 · MassTransit 8.1.3 · RabbitMQ · YARP |
 
-> arm64 환경 관련 제약(SQL Server 이미지 등)은 [PLAN.md의 Phase 1 리스크](PLAN.md#phase-1-리스크-착수-전-결정-필요) 참고.
+> SQL Server 이미지는 arm64 빌드가 없어 Rosetta 변환으로 동작한다.
+> 기능에는 문제가 없으나 성능 수치는 신뢰할 수 없다.
+> 실측 근거는 [PLAN.md의 Phase 1 리스크](PLAN.md#phase-1-리스크) 참고.

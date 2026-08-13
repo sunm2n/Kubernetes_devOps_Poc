@@ -1,0 +1,86 @@
+{{/*
+Postgres 2대 — catalogdb, basketdb.
+Catalog 와 Basket 은 Marten(Postgres 문서 저장) 을 쓴다.
+서비스별로 DB 인스턴스를 나누는 것이 원 구성이라 그대로 유지한다.
+*/}}
+{{- range $name := list "catalogdb" "basketdb" }}
+{{- $db := index $.Values.infra $name }}
+{{- if $db.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "eshop.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "eshop.selectorLabels" (dict "Chart" $.Chart "Release" $.Release "component" $name) | nindent 4 }}
+  ports:
+    - name: postgres
+      port: {{ $db.port }}
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "eshop.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "eshop.selectorLabels" (dict "Chart" $.Chart "Release" $.Release "component" $name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "eshop.selectorLabels" (dict "Chart" $.Chart "Release" $.Release "component" $name) | nindent 8 }}
+    spec:
+      securityContext:
+        # postgres 이미지의 실행 사용자(uid 999)가 볼륨에 쓸 수 있어야 한다.
+        # kind 의 기본 스토리지(local-path)는 호스트 디렉터리를 root 소유로 만들기 때문에
+        # fsGroup 을 지정하지 않으면 기동 시 권한 오류가 난다.
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: {{ $db.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: {{ $db.port }}
+          env:
+            {{- range $key, $value := $db.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          # pg_isready 는 서버가 접속을 받을 수 있는 상태인지 확인한다.
+          # 포트만 보는 것과 달리 초기화가 끝났는지까지 판단할 수 있다.
+          startupProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            periodSeconds: 10
+          resources:
+            {{- toYaml $.Values.resources.db | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ $db.storage }}
+{{- end }}
+{{- end }}

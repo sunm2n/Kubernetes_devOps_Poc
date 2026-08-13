@@ -1,0 +1,143 @@
+{{/*
+애플리케이션 6개.
+values.yaml 의 apps 항목마다 ConfigMap · Secret · Deployment · Service 를 한 벌씩 만든다.
+서비스별로 파일을 나누면 같은 구조가 여섯 번 반복되므로 하나로 묶었다.
+*/}}
+{{- range $name, $app := .Values.apps }}
+---
+{{- if $app.config }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-config
+  labels:
+    {{- include "eshop.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+data:
+  ASPNETCORE_ENVIRONMENT: {{ $.Values.global.aspnetcoreEnvironment | quote }}
+  {{- range $key, $value := $app.config }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+---
+{{- end }}
+{{- if $app.secrets }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}-secret
+  labels:
+    {{- include "eshop.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+type: Opaque
+stringData:
+  {{- range $key, $value := $app.secrets }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "eshop.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  replicas: {{ $app.replicas | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "eshop.selectorLabels" (dict "Chart" $.Chart "Release" $.Release "component" $name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "eshop.selectorLabels" (dict "Chart" $.Chart "Release" $.Release "component" $name) | nindent 8 }}
+      annotations:
+        # ConfigMap·Secret 이 바뀌면 파드를 다시 만든다.
+        # 이 주석이 없으면 설정만 바꿔 배포했을 때 파드가 옛 값을 그대로 들고 있는다.
+        checksum/config: {{ toYaml $app | sha256sum }}
+    spec:
+      {{- with $app.waitFor }}
+      initContainers:
+        {{- include "eshop.waitInitContainers" (dict "waitFor" . "root" $) | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: "{{ $app.image }}:{{ $.Values.global.imageTag }}"
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $app.port }}
+          envFrom:
+            {{- if $app.config }}
+            - configMapRef:
+                name: {{ $name }}-config
+            {{- end }}
+            {{- if $app.secrets }}
+            - secretRef:
+                name: {{ $name }}-secret
+            {{- end }}
+          {{- if eq $app.probe.type "http" }}
+          # 기동이 끝날 때까지 여유를 준다.
+          # 최대 failureThreshold × periodSeconds = 150초.
+          # Ordering 은 기동 시 EF 마이그레이션을 돌리므로 시간이 더 걸린다.
+          startupProbe:
+            httpGet:
+              path: {{ $app.probe.path }}
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: {{ $app.probe.path }}
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: {{ $app.probe.path }}
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          {{- else }}
+          # /health 엔드포인트가 없는 서비스는 포트 개방만 확인한다.
+          # 실제 health 엔드포인트 추가는 앱 저장소를 고쳐야 하므로 Phase 4 로 미뤘다.
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+          {{- end }}
+          resources:
+            {{- toYaml $.Values.resources.app | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "eshop.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "eshop.selectorLabels" (dict "Chart" $.Chart "Release" $.Release "component" $name) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $app.port }}
+      targetPort: http
+      {{- if eq $name "discount-grpc" }}
+      # gRPC 는 HTTP/2 위에서 동작한다.
+      # appProtocol 을 명시해야 Istio(Phase 8) 같은 계층이 프로토콜을 올바로 인식한다.
+      appProtocol: kubernetes.io/h2c
+      {{- end }}
+{{- end }}

@@ -42,19 +42,50 @@
 - 인프라 5종은 Bitnami 차트 또는 StatefulSet, PVC 연결
 - **완료 조건**: `helm upgrade --install` 로 11개 파드 Ready, shopping.web에서 상품 조회→장바구니→주문 플로우 성공
 
-### Phase 1 리스크 (착수 전 결정 필요)
+### Phase 1 리스크
 
-**R1. SQL Server에 arm64 이미지가 없다 — 최우선 블로커**
-`mcr.microsoft.com/mssql/server:2022-latest`는 amd64 단일 manifest다. Docker Desktop에서는 Rosetta로 돌지만, kind 노드 안의 containerd에는 에뮬레이션이 없어 `exec format error`가 난다. 선택지:
-- (A) `orderdb`만 클러스터 밖 Docker에 두고 Ordering.API가 `host.docker.internal`로 접속 — 가장 빠름, Phase 0~5는 이걸로 충분
-- (B) Ordering을 PostgreSQL로 교체 — EF provider 교체 + 마이그레이션 재생성. **12p 라이선스 감사 관점에서 SQL Server는 이 스택에서 운영 라이선스 비용이 붙는 유일한 컴포넌트**라 어차피 논의 대상
-- (C) `azure-sql-edge`(arm64) — 지원 종료라 비추천
+**R1. SQL Server에 arm64 이미지가 없다 — 블로커가 아님 (2026-08-13 실측으로 정정)**
+
+`mcr.microsoft.com/mssql/server:2022-latest`가 amd64 단일 manifest인 것은 맞다.
+그러나 처음 서술했던 "kind 노드 안의 containerd에는 에뮬레이션이 없어 `exec format error`가 난다"는
+**사실이 아니었다.** Phase 0 클러스터에서 직접 확인한 결과는 다음과 같다.
+
+| 확인 항목 | 결과 |
+|---|---|
+| `/run/rosetta` 마운트 (kind 노드 내부) | 없음 |
+| `binfmt_misc` 핸들러 | 노드 내부에서도 보임 (커널 전역 상태) |
+| `rosetta` 등록 플래그 | `POCF` — `F`(fix binary) 포함 |
+| alpine amd64 이미지 실행 | `x86_64` 출력, 정상 종료 |
+| SQL Server 2022 파드 | 기동 완료, `SELECT @@VERSION` 응답, `(X64)` 표기 |
+| 메모리 실측 | 약 1.1 GiB |
+
+`F` 플래그는 커널이 등록 시점에 인터프리터 파일을 열어 fd를 유지하는 옵션이라,
+마운트 네임스페이스가 달라 `/run/rosetta`가 보이지 않아도 변환이 동작한다.
+binfmt_misc 자체가 네임스페이스로 격리되지 않는 커널 전역 상태인 점도 함께 작용한다.
+
+**결론: SQL Server를 클러스터 내부에 그대로 배치한다.** (A)·(B)·(C) 모두 불필요하다.
+Phase 1에서 11개 파드가 재시작 0회로 기동하고 주문 플로우가 끝까지 성립하는 것을 확인했다.
+
+다만 다음 비용은 남는다. 성능이 아니라 다른 축의 문제다.
+
+1. **성능 수치를 신뢰할 수 없다** — 변환 실행이므로 부하 테스트 결과는 의미가 없다.
+   파이프라인 검증에는 영향이 없다.
+2. **이미지가 1.5 GB** — Phase 6 폐쇄망 반출입 번들이 그만큼 커진다. 기동에도 약 2분 걸린다.
+3. **빌드 아키텍처 불일치** — Phase 4의 과제다. GitHub 호스티드 러너는 amd64,
+   로컬 셀프호스티드 러너는 arm64, 실 운영 K8s는 x86 서버다.
+   어디서 빌드하느냐에 따라 산출물이 달라지므로 CI 설계 시 명시적으로 정해야 한다.
+4. **운영 라이선스 비용** — 이 스택에서 라이선스 비용이 붙는 유일한 컴포넌트다(12p 감사 항목).
+   PostgreSQL 교체는 여전히 검토할 만하지만, 이유는 "동작하지 않아서"가 아니라 "비용" 쪽이다.
+
+상세: [docs/003-phase1-helm-charts.md](docs/003-phase1-helm-charts.md)
 
 **R2. 테스트 프로젝트가 0개**
 Phase 4의 "테스트 실패 시 파이프라인 중단"을 증명할 대상이 없다. Catalog.API에 단위 테스트 최소 1개 추가 필요.
+Phase 1에서는 배포 성립 여부만 다루므로 범위에서 제외했다.
 
-**R3. Discount.Grpc가 SQLite 파일 DB** (`Data Source=discountdb`)
-파드 재시작 시 데이터 소실. PVC 연결하거나 PoC 범위에서 감수.
+**R3. Discount.Grpc가 SQLite 파일 DB** (`Data Source=discountdb`) — 볼륨 불필요로 결론
+마이그레이션의 `HasData`가 기동할 때마다 쿠폰을 다시 심으므로, 파드가 재생성돼도 초기 상태로 복구된다.
+런타임에 갱신한 쿠폰은 사라지지만 PoC 범위에서는 감수한다. PVC를 붙이지 않았다.
 
 **R4. .NET 8 (문서는 .NET Core 10)**
 11개 csproj 전부 `net8.0`. CI/CD 파이프라인 검증에는 영향 없음 — 나중에 TFM만 올리면 된다.
