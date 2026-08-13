@@ -172,11 +172,20 @@ ok "prevent_vul=true · severity=critical · 프로젝트 허용목록 사용"
 
 # ── 4-2. CVE 허용목록 ────────────────────────────────────────────
 # 게이트를 켜면 지금 쓰는 이미지가 그대로 막힌다.
-# .NET 8 베이스 이미지(Debian)와 애플리케이션 의존성에 Critical 이 6건 있다.
+# 이미지 6개 전체를 스캔해 나온 고유 Critical 은 7건이다.
 #
-# 운영에서 하는 일과 같은 방식으로 분류해 등록한다.
-# 등록해두면 이 6건은 통과하되, 새로 생기는 Critical 은 그대로 막힌다.
-# 상세와 후속 조치는 docs/005-phase3-harbor-registry.md 참고.
+#   베이스 이미지 (mcr.microsoft.com/dotnet/aspnet:8.0 의 Debian)  5건
+#     CVE-2026-13221  CVE-2026-42496  CVE-2026-57433  CVE-2026-8376   perl-base
+#     CVE-2023-45853                                                  zlib1g
+#     → 애플리케이션 코드로 손댈 수 없다. 베이스 이미지를 갱신해야 한다.
+#
+#   애플리케이션 의존성                                              2건
+#     CVE-2026-45288  Marten  (catalog-api, basket-api)
+#     CVE-2024-51501  Refit   (shopping-web)
+#     → 버전 상향으로 해결된다. 여기 넣고 넘길 항목이 아니다. 이슈로 분리했다.
+#
+# 등록해두면 이 7건은 통과하되, 새로 생기는 Critical 은 그대로 막힌다.
+# 상세는 docs/005-phase3-harbor-registry.md 와 docs/006-phase4-ci-pipeline.md 참고.
 log "CVE 허용목록 등록"
 
 harbor_api -o /dev/null -X PUT "http://${HARBOR_HOST}/api/v2.0/projects/erp-hq" -d '{
@@ -187,11 +196,12 @@ harbor_api -o /dev/null -X PUT "http://${HARBOR_HOST}/api/v2.0/projects/erp-hq" 
       {"cve_id": "CVE-2026-57433"},
       {"cve_id": "CVE-2026-8376"},
       {"cve_id": "CVE-2023-45853"},
-      {"cve_id": "CVE-2026-45288"}
+      {"cve_id": "CVE-2026-45288"},
+      {"cve_id": "CVE-2024-51501"}
     ]
   }
 }' || true
-ok "베이스 이미지 5건 + 애플리케이션 의존성 1건"
+ok "베이스 이미지 5건 + 애플리케이션 의존성 2건"
 
 # ── 5. 결과 ──────────────────────────────────────────────────────
 log "Harbor 파드"
