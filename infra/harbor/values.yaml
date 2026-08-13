@@ -1,0 +1,105 @@
+# Harbor Helm values — kind 로컬 클러스터용
+#
+# 차트: harbor/harbor
+# 설치: scripts/30-install-harbor.sh
+
+expose:
+  type: ingress
+  tls:
+    # 로컬 검증이라 평문 HTTP 로 노출한다.
+    #
+    # 운영에서는 반드시 켜야 한다. 끄면 이미지를 받는 쪽에서도
+    # 평문을 허용해야 하고(hosts.toml 의 http 엔드포인트, crane --insecure),
+    # 그 설정이 다른 레지스트리까지 느슨하게 만들 여지가 생긴다.
+    # Phase 6 폐쇄망 구성에서 TLS 를 다시 다룬다.
+    enabled: false
+  ingress:
+    hosts:
+      core: harbor.localtest.me
+    className: nginx
+    annotations:
+      # 이미지 레이어는 크다. 기본 제한(1m)에 걸리면 푸시가 413 으로 실패한다.
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"
+
+# 컨테이너 런타임과 Harbor 가 서로 같은 주소를 쓰도록 맞춘다.
+# 이 값이 실제 접근 경로와 다르면 docker/crane 이 리다이렉트를 따라가지 못한다.
+externalURL: http://harbor.localtest.me
+
+# 초기 관리자 비밀번호.
+# 로컬 검증용 고정값이며, 운영에서는 설치 시 주입해야 한다(Phase 8 OpenBao).
+harborAdminPassword: Harbor12345
+
+persistence:
+  enabled: true
+  persistentVolumeClaim:
+    registry:
+      # 이미지 6개(각 350~410 MB)와 취약 이미지 검증용 몇 개를 담는다.
+      size: 10Gi
+    jobservice:
+      jobLog:
+        size: 1Gi
+    database:
+      size: 2Gi
+    redis:
+      size: 1Gi
+    trivy:
+      # Trivy 취약점 DB. 수백 MB 규모다.
+      # Phase 6 폐쇄망에서는 이 DB 도 반입 대상이 된다.
+      size: 5Gi
+
+trivy:
+  enabled: true
+  # 최초 스캔 전에 취약점 DB 를 내려받는다.
+  skipUpdate: false
+
+# 이 PoC 에서 쓰지 않는 구성요소는 끈다.
+# 메모리와 기동 시간을 줄이고, Phase 6에서 반입할 이미지 수도 함께 줄어든다.
+exporter:
+  # Prometheus 메트릭. Phase 8 관측성에서 켠다.
+  replicas: 1
+metrics:
+  enabled: false
+
+core:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+registry:
+  registry:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+  controller:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
+jobservice:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+database:
+  internal:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+redis:
+  internal:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
+portal:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi

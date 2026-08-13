@@ -66,7 +66,12 @@ spec:
       {{- end }}
       containers:
         - name: {{ $name }}
-          image: "{{ $app.image }}:{{ $.Values.global.imageTag }}"
+          {{/*
+            imageRegistry 가 비어 있으면 접두어 없이 이미지 이름만 쓴다.
+            기본값은 eshop 이며 kind load 로 넣은 이미지를 가리킨다.
+            Harbor 를 쓸 때는 환경별 values 파일이 이 값을 덮어쓴다.
+          */}}
+          image: "{{ with $.Values.global.imageRegistry }}{{ . }}/{{ end }}{{ $app.image }}:{{ $.Values.global.imageTag }}"
           imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
           ports:
             - name: http

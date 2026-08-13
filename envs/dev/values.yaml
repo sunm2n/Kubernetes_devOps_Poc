@@ -11,6 +11,17 @@
 # kubectl 이나 helm 을 직접 실행할 필요가 없고, 실행해도 selfHeal 이 되돌린다.
 
 global:
+  # 이미지를 받아올 레지스트리.
+  #
+  # Phase 3부터 Harbor 에서 받는다. 이전에는 이 값이 비어 있어
+  # kind load 로 노드에 직접 넣은 이미지에 의존했고,
+  # 그때는 이미지가 어디서 왔는지 Git 에 아무 기록이 남지 않았다.
+  #
+  # erp-hq 는 public 프로젝트라 익명 pull 이 된다.
+  # 이 저장소가 PUBLIC 이라 pull secret 을 Git 에 둘 수 없어서 택한 방식이다.
+  # 자격증명이 필요한 구성은 Phase 8(OpenBao)에서 다룬다.
+  imageRegistry: harbor.localtest.me/erp-hq
+
   # 배포할 이미지 태그.
   #
   # Phase 4에서 CI 가 빌드 후 이 값을 커밋하게 된다.
@@ -18,9 +29,12 @@ global:
   # 차트 구조 변경과 배포 태그 갱신이 서로 섞이지 않는다.
   imageTag: local
 
-  # 이미지는 scripts/10-build-images.sh 가 kind 노드에 직접 넣는다.
-  # 레지스트리에서 받아오지 않으므로 이미 있으면 그대로 쓴다.
-  # Phase 3에서 Harbor 를 도입하면 Always 로 바꾸고 pull secret 을 붙인다.
+  # 레지스트리에서 받아오되, 이미 노드에 있으면 다시 받지 않는다.
+  #
+  # Always 로 두면 태그를 재사용할 때 갱신을 보장할 수 있지만,
+  # 이 PoC 는 태그가 고정(local)이라 매번 받을 이유가 없다.
+  # Phase 4에서 커밋 해시를 태그로 쓰기 시작하면 태그 자체가 달라지므로
+  # IfNotPresent 로도 항상 새 이미지를 받게 된다.
   imagePullPolicy: IfNotPresent
 
   # 개발 환경이므로 시드 데이터를 생성한다.

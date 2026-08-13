@@ -10,8 +10,16 @@
 #   - 접속 문자열은 Secret, 나머지 설정은 ConfigMap 으로 나눴다.
 
 global:
-  # 이미지 태그. scripts/10-build-images.sh 가 이 태그로 빌드해
-  # kind 클러스터에 직접 주입한다. 레지스트리는 Phase 3에서 도입한다.
+  # 이미지 레지스트리 접두어.
+  #
+  # 빈 문자열이면 Docker Hub 로 해석되며, 그때는 노드에 미리 넣어둔
+  # 이미지(kind load)에만 의존하게 되어 출처가 Git 에 남지 않는다.
+  # Phase 3에서 Harbor 를 도입하며 envs/dev/values.yaml 이 이 값을 채운다.
+  # 기본값 eshop 은 scripts/10-build-images.sh 가 붙이는 접두어와 같다.
+  # 레지스트리 없이 kind load 만으로 돌릴 때 쓰인다.
+  imageRegistry: "eshop"
+
+  # 이미지 태그. Phase 4에서 CI 가 커밋하게 된다.
   imageTag: local
 
   # 이미지를 레지스트리에서 받지 않고 노드에 주입하므로 Never 에 가깝지만,
@@ -45,7 +53,7 @@ ingress:
 #   probe     http 는 경로가 필요하고, tcp 는 포트만 확인한다
 apps:
   catalog-api:
-    image: eshop/catalog-api
+    image: catalog-api
     replicas: 1
     port: 8080
     waitFor:
@@ -59,7 +67,7 @@ apps:
       ConnectionStrings__Database: "Server=catalogdb;Port=5432;Database=CatalogDb;User Id=postgres;Password=postgres;Include Error Detail=true"
 
   basket-api:
-    image: eshop/basket-api
+    image: basket-api
     replicas: 1
     port: 8080
     waitFor:
@@ -83,7 +91,7 @@ apps:
       MessageBroker__Password: "guest"
 
   discount-grpc:
-    image: eshop/discount-grpc
+    image: discount-grpc
     replicas: 1
     port: 8080
     # HTTP/2 전용이라 HTTP 프로브를 쓸 수 없고 /health 엔드포인트도 없다.
@@ -98,7 +106,7 @@ apps:
       ConnectionStrings__Database: "Data Source=discountdb"
 
   ordering-api:
-    image: eshop/ordering-api
+    image: ordering-api
     replicas: 1
     port: 8080
     waitFor:
@@ -117,7 +125,7 @@ apps:
       MessageBroker__Password: "guest"
 
   yarp-apigateway:
-    image: eshop/yarp-apigateway
+    image: yarp-apigateway
     replicas: 1
     port: 8080
     # YARP 자체에는 health 엔드포인트가 없다.
@@ -133,7 +141,7 @@ apps:
       ReverseProxy__Clusters__ordering-cluster__Destinations__destination1__Address: "http://ordering-api:8080"
 
   shopping-web:
-    image: eshop/shopping-web
+    image: shopping-web
     replicas: 1
     port: 8080
     probe:
