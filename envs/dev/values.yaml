@@ -1,0 +1,51 @@
+# 개발 환경 값 — charts/eshop 을 이 환경에 맞게 덮어쓴다.
+#
+# 차트 본체(charts/eshop/values.yaml)는 환경과 무관한 구조와 기본값을 담고,
+# 이 파일은 환경에 따라 달라지는 값만 담는다.
+#
+# ArgoCD 가 이 파일을 함께 읽는다.
+#   argocd/applications/eshop-dev.yaml 의 multi-source 설정 참고
+#
+# ── 이 파일을 고치면 배포된다 ─────────────────────────────────────
+# 커밋을 푸시하면 ArgoCD 가 감지해 클러스터에 반영한다.
+# kubectl 이나 helm 을 직접 실행할 필요가 없고, 실행해도 selfHeal 이 되돌린다.
+
+global:
+  # 배포할 이미지 태그.
+  #
+  # Phase 4에서 CI 가 빌드 후 이 값을 커밋하게 된다.
+  # 그때 고쳐야 할 파일이 차트 본체가 아니라 이 파일이어야,
+  # 차트 구조 변경과 배포 태그 갱신이 서로 섞이지 않는다.
+  imageTag: local
+
+  # 이미지는 scripts/10-build-images.sh 가 kind 노드에 직접 넣는다.
+  # 레지스트리에서 받아오지 않으므로 이미 있으면 그대로 쓴다.
+  # Phase 3에서 Harbor 를 도입하면 Always 로 바꾸고 pull secret 을 붙인다.
+  imagePullPolicy: IfNotPresent
+
+  # 개발 환경이므로 시드 데이터를 생성한다.
+  # Catalog 의 상품 6종과 Ordering 의 초기 스키마가 이 값에 걸려 있다.
+  aspnetcoreEnvironment: Development
+
+ingress:
+  enabled: true
+  host: eshop.localtest.me
+  gatewayHost: api.eshop.localtest.me
+
+# 개발 환경의 복제본 수.
+#
+# selfHeal 검증에서 이 값이 기준이 된다.
+# kubectl scale 로 늘려도 ArgoCD 가 여기 적힌 수로 되돌린다.
+apps:
+  catalog-api:
+    replicas: 1
+  basket-api:
+    replicas: 1
+  discount-grpc:
+    replicas: 1
+  ordering-api:
+    replicas: 1
+  yarp-apigateway:
+    replicas: 1
+  shopping-web:
+    replicas: 1

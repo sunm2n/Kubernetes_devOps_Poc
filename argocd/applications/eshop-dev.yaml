@@ -1,0 +1,70 @@
+# EShopMicroservices — 개발 환경 Application
+#
+# ArgoCD 가 이 정의를 보고 Git 저장소를 감시하며 클러스터를 맞춘다.
+# 사람이 kubectl 이나 helm 으로 바꾼 내용은 selfHeal 이 되돌린다.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: eshop-dev
+  namespace: argocd
+  # ArgoCD 가 Application 을 지울 때 배포된 자원을 함께 정리한다.
+  # 이것이 없으면 Application 만 사라지고 파드는 클러스터에 남는다.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  # 차트와 값 파일을 서로 다른 경로에서 가져온다.
+  #
+  # 첫 번째 source 가 차트, 두 번째가 값 파일이다.
+  # ref: values 로 이름을 붙이면 첫 번째 source 의 valueFiles 에서
+  # $values 로 참조할 수 있다. 이 방식이 아니면 값 파일이 차트 디렉터리
+  # 안에 있어야 하고, 그러면 환경 분리가 무너진다.
+  sources:
+    - repoURL: https://github.com/sunm2n/Kubernetes_devOps_Poc.git
+      targetRevision: dev
+      path: charts/eshop
+      helm:
+        valueFiles:
+          - $values/envs/dev/values.yaml
+
+    - repoURL: https://github.com/sunm2n/Kubernetes_devOps_Poc.git
+      targetRevision: dev
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: eshop
+
+  syncPolicy:
+    automated:
+      # Git 에 없는 자원을 클러스터에서 제거한다.
+      # 값 파일에서 서비스를 빼면 실제로 사라진다.
+      prune: true
+
+      # 클러스터가 Git 과 달라지면 되돌린다.
+      # 아키텍처 문서 6p 가 말하는 "배포 일관성 유지"의 실체다.
+      selfHeal: true
+
+    syncOptions:
+      # 네임스페이스가 없으면 만든다.
+      - CreateNamespace=true
+      # 마지막 적용 상태를 어노테이션이 아니라 서버 측에 기록한다.
+      # 매니페스트가 큰 경우 어노테이션 크기 제한에 걸리는 것을 피한다.
+      - ServerSideApply=true
+
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+
+  # StatefulSet 의 volumeClaimTemplates 는 생성 후 변경할 수 없다.
+  # 차트가 렌더링한 내용과 클러스터의 실제 상태가 미세하게 달라도
+  # ArgoCD 가 계속 OutOfSync 로 보고하며 되돌리려 시도하는 것을 막는다.
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates
