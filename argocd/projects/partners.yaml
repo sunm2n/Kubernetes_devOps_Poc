@@ -1,0 +1,67 @@
+# 파트너사별 ArgoCD AppProject
+#
+# AppProject 는 Application 이 무엇을 어디에 배포할 수 있는지를 제한한다.
+# 네임스페이스·NetworkPolicy·RBAC 가 "배포된 다음" 을 막는다면,
+# 이것은 "배포 자체" 를 막는다.
+#
+# 이 층이 없으면 파트너 A 의 Application 정의를 고쳐 파트너 B 네임스페이스에
+# 배포할 수 있다. GitOps 에서는 매니페스트가 곧 권한이므로,
+# 매니페스트를 고칠 수 있는 사람이 무엇까지 할 수 있는지를 여기서 정한다.
+#
+# 파트너사가 늘어나면 이 파일에 항목을 더한다.
+# 15곳이 되면 ApplicationSet 으로 생성하는 편이 낫고, 그때 다시 본다.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: partner-a
+  namespace: argocd
+spec:
+  description: 파트너사 A — partner-a 네임스페이스로 제한
+
+  # 어디서 가져올 수 있는가.
+  sourceRepos:
+    - https://github.com/sunm2n/Kubernetes_devOps_Poc.git
+
+  # 어디에 배포할 수 있는가.
+  # 이 목록에 없는 네임스페이스로는 동기화가 거부된다.
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: partner-a
+
+  # 클러스터 범위 자원은 만들 수 없다.
+  #
+  # 빈 목록이 곧 전면 금지다. 이것이 없으면 파트너 Application 이
+  # Namespace·ClusterRole·ClusterRoleBinding 을 만들 수 있고,
+  # 그러면 네임스페이스 격리가 의미를 잃는다.
+  clusterResourceWhitelist: []
+
+  # 네임스페이스 안에서도 자원 한도는 건드리지 못하게 한다.
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: partner-b
+  namespace: argocd
+spec:
+  description: 파트너사 B — partner-b 네임스페이스로 제한
+
+  sourceRepos:
+    - https://github.com/sunm2n/Kubernetes_devOps_Poc.git
+
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: partner-b
+
+  clusterResourceWhitelist: []
+
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange

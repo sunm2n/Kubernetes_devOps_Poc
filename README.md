@@ -20,6 +20,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | [007-app-repo-cleanup.md](docs/007-app-repo-cleanup.md) | 앱 저장소 정리 — Critical CVE 해소, health 엔드포인트, CI 재시도 |
 | [008-phase5-quality-gates.md](docs/008-phase5-quality-gates.md) | Phase 5 — 단위 테스트·SonarQube·스캔 게이트, 실패 시 차단 실증 |
 | [009-phase6a-airgap-deployment.md](docs/009-phase6a-airgap-deployment.md) | Phase 6a — 폐쇄망 반출입, 번들 3.6GB, 인터넷 없이 파드 11개 기동 |
+| [010-phase7-partner-isolation.md](docs/010-phase7-partner-isolation.md) | Phase 7 — 파트너 격리 4층(레지스트리·네트워크·권한·GitOps), 거짓 통과한 검증 |
 
 ## 빠른 시작
 
@@ -44,6 +45,9 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 ./scripts/50-install-sonarqube.sh # SonarQube 설치 + CI 토큰 발급
 ./scripts/51-verify-gates.sh      # 품질·보안 게이트 차단 검증
 
+./scripts/70-setup-partners.sh    # 파트너 격리 구성 (remove 로 제거)
+./scripts/71-verify-isolation.sh  # 격리 검증 20개
+
 ./scripts/60-create-airgap-cluster.sh # 폐쇄망 클러스터 (create|isolate|delete)
 ./scripts/61-export-bundle.sh         # 반출 번들 생성 (약 3.6GB)
 ./scripts/62-import-bundle.sh         # 폐쇄망 반입 (verify-only 로 무결성만)
@@ -64,6 +68,8 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | http://argocd.localtest.me | ArgoCD UI (`admin` / 설치 스크립트가 출력) |
 | http://harbor.localtest.me | Harbor UI (`admin` / `Harbor12345`) |
 | http://sonarqube.localtest.me | SonarQube UI (`admin` / `SonarPoC12345!`) |
+| http://eshop.partner-a.localtest.me | 파트너사 A (격리된 테넌트) |
+| http://eshop.partner-b.localtest.me | 파트너사 B (격리된 테넌트) |
 
 폐쇄망(`.airgap`)은 공개 DNS 에 없다. 점프 호스트에서 접근한다.
 
@@ -101,7 +107,9 @@ curl -s http://eshop.airgap/ | head
 | 2 | `selfHeal: true` — 클러스터 수동 변경분 자동 복구 | **달성** — 약 4초 만에 복구 ([004](docs/004-phase2-argocd-gitops.md)) |
 | 3 | 이미지 취약점 스캔이 파이프라인을 실제로 차단 | **달성** — Critical 검출 시 pull 거부 ([005](docs/005-phase3-harbor-registry.md)) |
 | 4 | 인터넷 없이 반입 이미지만으로 배포 (폐쇄망) | **달성** — 번들 3.6GB 로 파드 11개 기동 ([009](docs/009-phase6a-airgap-deployment.md)) |
-| 5 | 파트너사별 네임스페이스 · 레지스트리 · RBAC 격리 | 부분 — Harbor 프로젝트 격리만 (Phase 7에서 완성) |
+| 5 | 파트너사별 네임스페이스 · 레지스트리 · RBAC 격리 | **달성** — 4층 격리, 경계 침범 시도 전부 차단 ([010](docs/010-phase7-partner-isolation.md)) |
+
+**5개 목표 전부 달성.** 각 항목은 통과뿐 아니라 **막혀야 할 것이 막히는지**까지 확인했다.
 
 ---
 
@@ -119,7 +127,7 @@ curl -s http://eshop.airgap/ | head
 | 5 | 품질/보안 게이트 | [#18](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/18) | [#20](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/20) | [008](docs/008-phase5-quality-gates.md) | 완료 |
 | 6a | 폐쇄망 반출입 · 배포 | [#22](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/22) | [#23](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/23) | [009](docs/009-phase6a-airgap-deployment.md) | 완료 |
 | 6b | 패키지 · 베이스이미지 · Trivy DB 미러링 | | | | 대기 |
-| 7 | 파트너 격리 · 멀티테넌시 | | | | 대기 |
+| 7 | 파트너 격리 · 멀티테넌시 | [#24](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/24) | [#25](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/25) | [010](docs/010-phase7-partner-isolation.md) | 완료 |
 
 ### 미해결 항목
 
@@ -127,7 +135,8 @@ curl -s http://eshop.airgap/ | head
 |---|---|---|
 | [#16](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/16) | High 등급 취약 패키지 다수 — 대부분 전이 의존성 | Harbor 게이트는 Critical 만 차단해 배포에는 지장 없음 |
 | [#19](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/19) | 테스트 커버리지 미측정 | 테스트는 있으나 얼마나 덮는지 모른다. 게이트 조건으로 쓰려면 필요 |
-| — | 개발계 SonarQube 를 내린 상태 | Phase 6a 메모리 확보용. `scripts/50-install-sonarqube.sh` 로 복구되나 PVC 가 함께 지워져 CI 를 한 번 돌려야 분석 결과가 다시 쌓인다 |
+| — | 파트너 ResourceQuota 없음 | AppProject 가 파트너의 Quota **생성**은 막지만, 관리자가 **부여**하는 층이 아직 없다. 한 파트너가 클러스터 자원을 다 쓰는 것을 막지 못한다 ([010](docs/010-phase7-partner-isolation.md)) |
+| — | SonarQube 재설치 후 분석 이력 없음 | Phase 6a 때 내렸다가 복구했는데, 차트가 PVC 를 함께 지워 이전 분석 결과가 사라졌다. CI 를 한 번 돌리면 다시 쌓인다 |
 
 ---
 

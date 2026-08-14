@@ -39,6 +39,7 @@ spec:
       labels:
         {{- include "eshop.selectorLabels" (dict "Chart" .Chart "Release" .Release "component" "distributedcache") | nindent 8 }}
     spec:
+      {{- include "eshop.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: redis
           image: {{ $redis.image }}
@@ -105,6 +106,7 @@ spec:
       labels:
         {{- include "eshop.selectorLabels" (dict "Chart" .Chart "Release" .Release "component" "orderdb") | nindent 8 }}
     spec:
+      {{- include "eshop.imagePullSecrets" . | nindent 6 }}
       securityContext:
         # SQL Server 컨테이너는 uid 10001(mssql)로 동작한다.
         fsGroup: 10001
@@ -205,6 +207,7 @@ spec:
       labels:
         {{- include "eshop.selectorLabels" (dict "Chart" .Chart "Release" .Release "component" "messagebroker") | nindent 8 }}
     spec:
+      {{- include "eshop.imagePullSecrets" . | nindent 6 }}
       securityContext:
         # rabbitmq 이미지의 실행 사용자(uid 999)
         fsGroup: 999

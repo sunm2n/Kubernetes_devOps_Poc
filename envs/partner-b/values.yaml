@@ -1,0 +1,40 @@
+# 파트너사 B 환경 값 — charts/eshop 을 이 테넌트에 맞게 덮어쓴다.
+#
+# envs/partner-a/values.yaml 과 이름 말고는 같다.
+# 그 점이 확인 대상이다. 파트너사를 늘리는 데 새 차트나 새 구조가 필요하다면
+# 15곳으로 확장할 수 없다.
+
+global:
+  imageRegistry: harbor.localtest.me/partner-b
+  imageTag: 2a960c41e21e
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets:
+    - harbor-partner-b
+  aspnetcoreEnvironment: Development
+
+tenant:
+  networkPolicy:
+    enabled: true
+    ingressNamespace: ingress-nginx
+  rbac:
+    enabled: true
+    serviceAccountName: tenant-partner-b
+
+ingress:
+  enabled: true
+  host: eshop.partner-b.localtest.me
+  gatewayHost: api.eshop.partner-b.localtest.me
+
+apps:
+  catalog-api:
+    replicas: 1
+  basket-api:
+    replicas: 1
+  discount-grpc:
+    replicas: 1
+  ordering-api:
+    replicas: 1
+  yarp-apigateway:
+    replicas: 1
+  shopping-web:
+    replicas: 1

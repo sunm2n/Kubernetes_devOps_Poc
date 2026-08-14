@@ -60,6 +60,7 @@ spec:
         # 해시가 달라져, 복제본 수만 조정해도 전체 롤링 업데이트가 일어난다.
         checksum/config: {{ dict "config" $app.config "secrets" $app.secrets | toYaml | sha256sum }}
     spec:
+      {{- include "eshop.imagePullSecrets" $ | nindent 6 }}
       {{- with $app.waitFor }}
       initContainers:
         {{- include "eshop.waitInitContainers" (dict "waitFor" . "root" $) | nindent 8 }}

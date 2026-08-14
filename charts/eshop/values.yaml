@@ -26,11 +26,44 @@ global:
   # IfNotPresent 로 두어 Phase 3 전환 시 값만 바꾸면 되게 한다.
   imagePullPolicy: IfNotPresent
 
+  # 비공개 레지스트리용 pull secret 이름.
+  #
+  # 본사(erp-hq)는 public 프로젝트라 비어 있다.
+  # 파트너사는 private 프로젝트이므로 여기에 이름을 넣는다.
+  #
+  # Secret 자체는 이 저장소에 없다. 저장소가 PUBLIC 이라 자격증명을 둘 수 없고,
+  # scripts/70-setup-partners.sh 가 Harbor robot 계정을 발급해
+  # 클러스터에 직접 만든다. 여기서는 이름만 참조한다.
+  imagePullSecrets: []
+
   # Development 가 필요하다. 두 가지가 이 값에 걸려 있다.
   #   - Catalog: InitializeMartenWith<CatalogInitialData>() 로 상품 시드
   #   - Ordering: InitialiseDatabaseAsync() 로 스키마 생성·시드
   # Production 으로 두면 DB 가 비어 화면에 아무것도 뜨지 않는다.
   aspnetcoreEnvironment: Development
+
+# ──────────────────────────────────────────────────────────────────
+# 테넌트 격리 (Phase 7)
+# ──────────────────────────────────────────────────────────────────
+#
+# 기본은 꺼짐이다. 본사(envs/dev)는 지금까지의 동작을 그대로 유지한다.
+# 파트너사(envs/partner-*)에서 켠다.
+#
+# 켜면 charts/eshop/templates/tenant.yaml 이 만들어진다.
+tenant:
+  networkPolicy:
+    enabled: false
+
+    # Ingress 컨트롤러가 있는 네임스페이스.
+    # 여기서 오는 트래픽만 받는다. 값이 실제 네임스페이스와 다르면
+    # 파드는 다 뜨는데 브라우저에서 502 가 뜬다.
+    ingressNamespace: ingress-nginx
+
+  rbac:
+    enabled: false
+
+    # 파트너사 담당자용 ServiceAccount 이름.
+    serviceAccountName: tenant-operator
 
 ingress:
   enabled: true
