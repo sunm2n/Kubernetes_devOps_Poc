@@ -4,12 +4,16 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 
 `GitLab/GitHub → Jenkins → Harbor → ArgoCD → Kubernetes` 파이프라인이 실제로 동작하는지, 그리고 폐쇄망(망분리) 환경에서도 성립하는지를 단계적으로 증명하는 것이 목표다.
 
+> **Phase 0~7 완료. 검증 목표 5개를 모두 달성했다.**
+> 결과 요약과 남은 질문은 **[RESULTS.md](RESULTS.md)** 를 볼 것.
+
 ---
 
 ## 문서
 
 | 문서 | 내용 |
 |---|---|
+| [RESULTS.md](RESULTS.md) | **PoC 결과 정리** — 증명된 것과 안 된 것, 기술 선택 판단, 실제 환경으로 안 넘어가는 것, 부딪힌 문제 모음 |
 | [PLAN.md](PLAN.md) | **전체 PoC 계획** — 목표 정의, Phase 0~8 단계별 도입, GitLab vs GitHub 비교, 도구 비용 분석 |
 | [001-repo-bootstrap.md](docs/001-repo-bootstrap.md) | 저장소 구조 결정 근거, 작업 규칙 |
 | [002-phase0-kind-cluster.md](docs/002-phase0-kind-cluster.md) | Phase 0 — kind 클러스터 구성 결정과 검증 결과 |
