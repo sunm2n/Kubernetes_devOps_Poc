@@ -99,7 +99,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | 2 | ArgoCD GitOps | [#7](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/7) | [#8](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/8) | [004](docs/004-phase2-argocd-gitops.md) | 완료 |
 | 3 | Harbor 레지스트리 | [#10](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/10) | [#12](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/12) | [005](docs/005-phase3-harbor-registry.md) | 완료 |
 | 4 | CI (빌드·테스트·푸시) | [#13](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/13) | [#15](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/15) | [006](docs/006-phase4-ci-pipeline.md) | 골격 완료 |
-| 5 | 품질/보안 게이트 | [#18](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/18) | [#19](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/19) | [008](docs/008-phase5-quality-gates.md) | 완료 |
+| 5 | 품질/보안 게이트 | [#18](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/18) | [#20](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/20) | [008](docs/008-phase5-quality-gates.md) | 완료 |
 | 6 | 폐쇄망 시뮬레이션 | | | | 대기 |
 | 7 | 파트너 격리 · 멀티테넌시 | | | | 대기 |
 
@@ -108,7 +108,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | 이슈 | 내용 | 영향 |
 |---|---|---|
 | [#16](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/16) | High 등급 취약 패키지 다수 — 대부분 전이 의존성 | Harbor 게이트는 Critical 만 차단해 배포에는 지장 없음 |
-| [#20](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/20) | 테스트 커버리지 미측정 | 테스트는 있으나 얼마나 덮는지 모른다. 게이트 조건으로 쓰려면 필요 |
+| [#19](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/19) | 테스트 커버리지 미측정 | 테스트는 있으나 얼마나 덮는지 모른다. 게이트 조건으로 쓰려면 필요 |
 
 ---
 
