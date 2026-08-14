@@ -131,8 +131,22 @@ for partner in "${PARTNERS[@]}"; do
   # 이름은 Harbor 가 robot$<프로젝트>+<이름> 으로 만든다.
   # 접두어를 빼고 쓰면 인증이 조용히 실패하므로 응답에서 그대로 받아 쓴다.
   # 재실행할 수 있어야 하므로 같은 이름이 있으면 먼저 지운다.
-  # 비밀번호는 발급 시점에 한 번만 돌려주고 다시 조회할 수 없다.
-  OLD_ID="$(harbor_api "http://${HARBOR_HOST}/api/v2.0/robots?page_size=100" \
+  # 비밀번호는 발급 시점에 한 번만 돌려주고 다시 조회할 수 없어,
+  # 남겨두면 쓸 수 없는 계정이 쌓이고 생성은 CONFLICT 로 실패한다.
+  #
+  # 프로젝트 robot 은 그냥 조회되지 않는다.
+  # /robots 는 기본적으로 시스템 robot 만 돌려주고,
+  # 프로젝트 것을 보려면 질의에 프로젝트 ID 가 있어야 한다.
+  #
+  #   q=Level=project,ProjectID=<id>
+  #
+  # 이것 없이 부르면 빈 목록이 와서 "없다" 고 판단하게 된다.
+  PROJECT_ID="$(harbor_api "http://${HARBOR_HOST}/api/v2.0/projects/${partner}" \
+    | python3 -c "import json,sys; print(json.load(sys.stdin)['project_id'])" 2>/dev/null || true)"
+  [[ -n "${PROJECT_ID}" ]] || die "${partner} 프로젝트 ID 를 읽지 못했다."
+
+  OLD_ID="$(harbor_api \
+    "http://${HARBOR_HOST}/api/v2.0/robots?page_size=100&q=Level%3Dproject%2CProjectID%3D${PROJECT_ID}" \
     | ROBOT="robot\$${partner}+puller" python3 -c "
 import json, os, sys
 want = os.environ['ROBOT']

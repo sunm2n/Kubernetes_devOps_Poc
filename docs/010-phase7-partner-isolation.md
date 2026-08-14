@@ -152,6 +152,31 @@ Harbor 취약점 게이트(Phase 3)를 우회하는 경로가 생기는 셈이�
 비밀번호는 발급 시점에 한 번만 돌려주고 다시 조회할 수 없다.
 그래서 재실행할 때는 같은 이름의 robot 을 지우고 새로 만든다.
 
+### 프로젝트 robot 은 그냥 조회되지 않는다
+
+`GET /api/v2.0/robots` 는 관리자로 불러도 **빈 목록**을 준다.
+시스템 수준 robot 만 돌려주기 때문이다. 프로젝트 것을 보려면
+질의에 프로젝트 ID 가 있어야 한다.
+
+```
+q=Level=project,ProjectID=<id>
+```
+
+`Level=project` 만 넣으면 이렇게 답한다.
+
+```
+must with project ID when to query project robots
+```
+
+이것 없이 부르면 빈 목록이 와서 "없다" 고 판단하고 생성으로 넘어가,
+두 번째 실행에서 CONFLICT 로 멈춘다. dev 재검증에서 실제로 그렇게 걸렸다.
+
+```
+robot account 3:partner-a+puller already exists
+```
+
+한 번만 도는 스크립트로 만들면 드러나지 않는 종류의 문제다.
+
 ### 자격증명을 Git 에 둘 수 없다
 
 이 저장소는 PUBLIC 이다. `scripts/70-setup-partners.sh` 가 robot 을 발급해
