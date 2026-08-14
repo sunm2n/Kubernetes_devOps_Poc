@@ -1,0 +1,100 @@
+# Harbor Helm values — 폐쇄망 클러스터용
+#
+# 차트: harbor/harbor 1.19.2 (번들의 charts/ 에서 설치)
+# 설치: scripts/62-import-bundle.sh
+#
+# 이 Harbor 는 폐쇄망의 유일한 이미지 출처다.
+# 노드가 인터넷에 나갈 수 없으므로, 여기 없는 이미지는 뜨지 않는다.
+
+expose:
+  type: ingress
+  tls:
+    enabled: false
+  ingress:
+    hosts:
+      core: harbor.airgap
+    className: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"
+
+# 이름에 localtest.me 를 쓰지 않는다.
+#
+# localtest.me 는 공개 DNS 가 127.0.0.1 로 해석해 주는 이름이다.
+# 폐쇄망에는 그 DNS 가 없다. 이름 해석은 전적으로 노드의 /etc/hosts 가 맡는다.
+# .airgap 을 쓰면 어떤 이름이 망 안에서만 통하는지 한눈에 구분된다.
+externalURL: http://harbor.airgap
+
+harborAdminPassword: Harbor12345
+
+persistence:
+  enabled: true
+  persistentVolumeClaim:
+    registry:
+      size: 10Gi
+    jobservice:
+      jobLog:
+        size: 1Gi
+    database:
+      size: 2Gi
+    redis:
+      size: 1Gi
+
+# Trivy 를 끈다.
+#
+# Trivy 는 기동할 때 취약점 DB 를 내려받는데 폐쇄망에서는 실패한다.
+# 켜둔 채로 두면 파드가 CrashLoopBackOff 로 남아 클러스터 상태를 흐린다.
+#
+# 스캔을 포기한다는 뜻이 아니다. DB 자체를 반입 대상에 넣어야 하고,
+# 그 갱신 주기와 절차는 패키지·베이스이미지 미러링과 함께 봐야 한다.
+# Phase 6b 의 범위다.
+trivy:
+  enabled: false
+
+exporter:
+  replicas: 1
+metrics:
+  enabled: false
+
+core:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+registry:
+  registry:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+  controller:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
+jobservice:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+database:
+  internal:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+redis:
+  internal:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
+portal:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi

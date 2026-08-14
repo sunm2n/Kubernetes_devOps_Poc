@@ -1,0 +1,37 @@
+# kind 클러스터 정의 — 폐쇄망 시뮬레이션
+#
+# 개발계(infra/kind/cluster.yaml)와 분리된 별도 클러스터다.
+# 생성 후 각 노드의 기본 경로를 지워 외부로 나갈 수 없게 만든다.
+#   → scripts/60-create-airgap-cluster.sh
+#
+# 노드가 2대인 것은 개발계(3대)와 달리 의도적이다.
+# 이 클러스터에서 증명할 것은 "인터넷 없이 반입물만으로 배포"이지
+# 멀티 노드 스케줄링이 아니다. 메모리를 아껴 GitLab CE 와 Harbor 를 함께 올린다.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: erp-airgap
+
+# 폐쇄망 Harbor 에서 이미지를 받으려면 containerd 가 레지스트리 설정을 읽어야 한다.
+# 노드 생성 시점에만 적용되는 값이라 여기 넣는다.
+containerdConfigPatches:
+  - |-
+    [plugins.'io.containerd.cri.v1.images'.registry]
+      config_path = '/etc/containerd/certs.d'
+
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
+
+  # ingress-nginx 는 nodeSelector(ingress-ready=true)로 이 노드에 고정된다.
+  # 라벨은 개발계와 같이 생성 스크립트가 붙인다. (scripts/60-create-airgap-cluster.sh)
+  - role: worker
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
+    # 개발계가 80/443 을 쓰고 있어 8080/8443 으로 노출한다.
+    # 운영자가 망 안에서 접근하는 경로에 해당한다.
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 8080
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 8443
+        protocol: TCP

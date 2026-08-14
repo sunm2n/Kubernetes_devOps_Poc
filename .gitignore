@@ -46,6 +46,12 @@ rendered/
 manifests-rendered/
 
 # ── 폐쇄망 반출입 산출물 (용량 큼, Git 대상 아님) ────────────────
+#
+# scripts/61-export-bundle.sh 가 .bundle/ 에 수 GB 를 만든다.
+# 이미지 tar 와 OCI blob 이라 Git 에 들어갈 것이 아니다.
+# 무엇이 들어갔는지는 .bundle/MANIFEST.txt 가 남기고,
+# 그 요약은 docs/009-phase6a-airgap-deployment.md 에 옮겨 적는다.
+.bundle/
 airgap/bundles/
 airgap/**/*.tar
 airgap/**/*.tar.gz

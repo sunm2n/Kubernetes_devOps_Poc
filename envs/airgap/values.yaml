@@ -1,0 +1,74 @@
+# 폐쇄망 환경 값 — charts/eshop 을 이 환경에 맞게 덮어쓴다.
+#
+# 폐쇄망 ArgoCD 가 이 파일을 읽는다.
+#   argocd/applications/eshop-airgap.yaml 참고
+#
+# ── 개발 환경과 무엇이 다른가 ─────────────────────────────────────
+#
+# 구조는 같다. 달라지는 것은 두 가지뿐이다.
+#
+#   1. 모든 이미지 주소가 harbor.airgap 을 가리킨다
+#   2. 호스트 이름이 .localtest.me 가 아니라 .airgap 이다
+#
+# 이 두 가지만 바꿔 같은 차트가 그대로 도는 것이 이 단계에서 확인할 점이다.
+# 차트를 폐쇄망용으로 따로 만들어야 했다면 환경 분리가 실패한 것이다.
+
+global:
+  imageRegistry: harbor.airgap/erp-hq
+
+  # 개발계에서 빌드해 반입한 태그.
+  # scripts/61-export-bundle.sh 가 envs/dev/values.yaml 에서 읽어 반출하고,
+  # scripts/62-import-bundle.sh 가 이 값을 그 태그로 맞춘다.
+  #
+  # 폐쇄망에는 CI 가 없다. 여기 적힌 태그는 사람이 반입 절차로 옮긴 결과이지
+  # 파이프라인이 자동으로 쓴 값이 아니다.
+  imageTag: 2a960c41e21e
+
+  imagePullPolicy: IfNotPresent
+
+  aspnetcoreEnvironment: Development
+
+ingress:
+  enabled: true
+  # .airgap 은 공개 DNS 에 없다. 노드와 점프 호스트의 /etc/hosts 로만 해석된다.
+  host: eshop.airgap
+  gatewayHost: api.eshop.airgap
+
+# ── 인프라 이미지 ────────────────────────────────────────────────
+#
+# 차트 본체는 이 값을 그대로 쓴다(global.imageRegistry 를 앞에 붙이지 않는다).
+# 애플리케이션 이미지와 출처가 다르기 때문이다. 하나는 우리가 빌드하고,
+# 이쪽은 외부에서 가져온다.
+#
+# 폐쇄망에서는 그 구분이 프로젝트로 드러난다.
+#   erp-hq    반입한 우리 빌드 결과물
+#   platform  반입한 외부 이미지. 갱신하려면 다시 반출입해야 한다
+infra:
+  catalogdb:
+    image: harbor.airgap/platform/postgres:17
+  basketdb:
+    image: harbor.airgap/platform/postgres:17
+  distributedcache:
+    image: harbor.airgap/platform/redis:7.4-alpine
+  orderdb:
+    image: harbor.airgap/platform/mssql-server:2022-latest
+  messagebroker:
+    image: harbor.airgap/platform/rabbitmq:4.1-management
+
+# 기동 대기 initContainer 도 이미지가 필요하다.
+# 이런 것을 빠뜨리면 애플리케이션은 다 반입했는데 파드가 Init 에서 멈춘다.
+waitImage: harbor.airgap/platform/busybox:1.37
+
+apps:
+  catalog-api:
+    replicas: 1
+  basket-api:
+    replicas: 1
+  discount-grpc:
+    replicas: 1
+  ordering-api:
+    replicas: 1
+  yarp-apigateway:
+    replicas: 1
+  shopping-web:
+    replicas: 1

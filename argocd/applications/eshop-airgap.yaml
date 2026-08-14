@@ -1,0 +1,58 @@
+# EShopMicroservices — 폐쇄망 환경 Application
+#
+# 개발 환경(eshop-dev.yaml)과 구조가 같다. 바뀐 것은 repoURL 과 값 파일 경로뿐이다.
+#
+# repoURL 이 github.com 이 아니라 http://gitlab.airgap/... 을 가리킨다.
+# 폐쇄망 ArgoCD 는 github.com 에 닿을 수 없으므로, 망 안에 Git 서버가 있어야
+# GitOps 가 성립한다. 이것이 폐쇄망에 GitLab 을 두는 이유다.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: eshop-airgap
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  sources:
+    - repoURL: http://gitlab.airgap/erp/gitops.git
+      # 반입 절차가 만드는 브랜치다.
+      # 개발계의 브랜치 이름(dev, feat/...)을 따라가지 않는다.
+      # 망 안의 저장소는 반입된 시점의 상태가 곧 기준이고,
+      # 개발계에서 무엇이 진행 중이었는지는 여기서 의미가 없다.
+      targetRevision: main
+      path: charts/eshop
+      helm:
+        valueFiles:
+          - $values/envs/airgap/values.yaml
+
+    - repoURL: http://gitlab.airgap/erp/gitops.git
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: eshop
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates
