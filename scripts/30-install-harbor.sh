@@ -171,21 +171,24 @@ set_meta erp-hq reuse_sys_cve_allowlist false
 ok "prevent_vul=true · severity=critical · 프로젝트 허용목록 사용"
 
 # ── 4-2. CVE 허용목록 ────────────────────────────────────────────
-# 게이트를 켜면 지금 쓰는 이미지가 그대로 막힌다.
-# 이미지 6개 전체를 스캔해 나온 고유 Critical 은 7건이다.
+# 게이트를 켜면 남아 있는 Critical 때문에 이미지가 막힌다.
 #
-#   베이스 이미지 (mcr.microsoft.com/dotnet/aspnet:8.0 의 Debian)  5건
-#     CVE-2026-13221  CVE-2026-42496  CVE-2026-57433  CVE-2026-8376   perl-base
-#     CVE-2023-45853                                                  zlib1g
-#     → 애플리케이션 코드로 손댈 수 없다. 베이스 이미지를 갱신해야 한다.
+# 지금 남은 것은 베이스 이미지(mcr.microsoft.com/dotnet/aspnet:8.0 의 Debian)의 5건뿐이다.
 #
-#   애플리케이션 의존성                                              2건
-#     CVE-2026-45288  Marten  (catalog-api, basket-api)
-#     CVE-2024-51501  Refit   (shopping-web)
-#     → 버전 상향으로 해결된다. 여기 넣고 넘길 항목이 아니다. 이슈로 분리했다.
+#   CVE-2026-13221  CVE-2026-42496  CVE-2026-57433  CVE-2026-8376   perl-base
+#   CVE-2023-45853                                                  zlib1g
 #
-# 등록해두면 이 7건은 통과하되, 새로 생기는 Critical 은 그대로 막힌다.
-# 상세는 docs/005-phase3-harbor-registry.md 와 docs/006-phase4-ci-pipeline.md 참고.
+# 애플리케이션 코드로 손댈 수 없고 베이스 이미지를 갱신해야 해소된다.
+# PLAN.md R4(.NET 8 → .NET Core 10)와 함께 볼 항목이다.
+#
+# 애플리케이션 의존성이던 2건은 실제로 고쳐서 목록에서 뺐다.
+#   CVE-2026-45288  Marten  6.4.1 → 8.37.4
+#   CVE-2024-51501  Refit   7.0.0 → 7.2.22
+# 허용목록은 손댈 수 없는 것만 담아야 한다. 고칠 수 있는 것을 넣어두면
+# 목록이 쌓이기만 하고 게이트가 아무것도 막지 않게 된다.
+#
+# 등록해두면 이 5건은 통과하되, 새로 생기는 Critical 은 그대로 막힌다.
+# 상세는 docs/007-app-repo-cleanup.md 참고.
 log "CVE 허용목록 등록"
 
 harbor_api -o /dev/null -X PUT "http://${HARBOR_HOST}/api/v2.0/projects/erp-hq" -d '{
@@ -195,13 +198,11 @@ harbor_api -o /dev/null -X PUT "http://${HARBOR_HOST}/api/v2.0/projects/erp-hq" 
       {"cve_id": "CVE-2026-42496"},
       {"cve_id": "CVE-2026-57433"},
       {"cve_id": "CVE-2026-8376"},
-      {"cve_id": "CVE-2023-45853"},
-      {"cve_id": "CVE-2026-45288"},
-      {"cve_id": "CVE-2024-51501"}
+      {"cve_id": "CVE-2023-45853"}
     ]
   }
 }' || true
-ok "베이스 이미지 5건 + 애플리케이션 의존성 2건"
+ok "베이스 이미지 5건 (애플리케이션 의존성 2건은 해소되어 제외)"
 
 # ── 5. 결과 ──────────────────────────────────────────────────────
 log "Harbor 파드"
