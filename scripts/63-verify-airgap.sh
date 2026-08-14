@@ -106,7 +106,10 @@ fi
 # ── 조건 3. 망 안의 GitLab 을 ArgoCD 가 본다 ─────────────────────
 log "조건 3 — 폐쇄망 GitOps"
 
-if jump curl -sf -o /dev/null --max-time 10 "http://${GITLAB_HOST}/-/readiness" 2>/dev/null; then
+# /-/readiness 가 아니라 로그인 화면을 본다.
+# readiness 는 monitoring_whitelist(기본 127.0.0.0/8)에만 답하고
+# 그 밖에서는 404 를 준다. 망 안에서 실제로 쓰이는 경로로 확인해야 한다.
+if jump curl -sf -o /dev/null --max-time 10 "http://${GITLAB_HOST}/users/sign_in" 2>/dev/null; then
   pass "GitLab 응답 (http://${GITLAB_HOST})"
 else
   fail "GitLab 이 응답하지 않는다"
@@ -194,8 +197,14 @@ else
   fail "화면에 상품이 보이지 않는다"
 fi
 
+# 요청은 점프 호스트에서, 파싱은 호스트에서 한다.
+#
+# docker exec 는 -i 없이 stdin 을 받지 않는다.
+# jump curl | jump python3 처럼 이어 붙이면 두 번째가 빈 입력을 읽어
+# 조용히 실패한다. 증명해야 할 것은 "요청이 폐쇄망 안에서 나갔는가" 이지
+# 응답을 어디서 해석하는가가 아니다.
 PID="$(jump curl -s --max-time 15 "${API}/catalog-service/products" 2>/dev/null \
-  | jump python3 -c "import json,sys; print(json.load(sys.stdin)['products'][0]['id'])" 2>/dev/null || true)"
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['products'][0]['id'])" 2>/dev/null || true)"
 if [[ -n "${PID}" ]]; then
   pass "상품 조회 — Catalog API (id ${PID:0:8}…)"
 else
@@ -214,7 +223,7 @@ fi
 
 # 950 이 800 으로 바뀌었으면 Discount 를 gRPC 로 부른 것이다.
 PRICE="$(jump curl -s --max-time 15 "${API}/basket-service/basket/${USER}" 2>/dev/null \
-  | jump python3 -c "import json,sys; print(json.load(sys.stdin)['cart']['items'][0]['price'])" 2>/dev/null || true)"
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['cart']['items'][0]['price'])" 2>/dev/null || true)"
 if [[ "${PRICE}" == "800" ]]; then
   pass "Discount gRPC 적용 — 950 → 800"
 else
@@ -235,7 +244,7 @@ fi
 FOUND=""
 for _ in $(seq 1 15); do
   COUNT="$(jump curl -s --max-time 15 "${API}/ordering-service/orders/${USER}" 2>/dev/null \
-    | jump python3 -c "
+    | python3 -c "
 import json,sys
 try:
     print(len(json.load(sys.stdin).get('orders', [])))

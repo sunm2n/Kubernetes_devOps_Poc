@@ -19,6 +19,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | [006-phase4-ci-pipeline.md](docs/006-phase4-ci-pipeline.md) | Phase 4 — CI 파이프라인, 캐시된 이미지가 게이트를 거치지 않는 문제 |
 | [007-app-repo-cleanup.md](docs/007-app-repo-cleanup.md) | 앱 저장소 정리 — Critical CVE 해소, health 엔드포인트, CI 재시도 |
 | [008-phase5-quality-gates.md](docs/008-phase5-quality-gates.md) | Phase 5 — 단위 테스트·SonarQube·스캔 게이트, 실패 시 차단 실증 |
+| [009-phase6a-airgap-deployment.md](docs/009-phase6a-airgap-deployment.md) | Phase 6a — 폐쇄망 반출입, 번들 3.6GB, 인터넷 없이 파드 11개 기동 |
 
 ## 빠른 시작
 
@@ -43,6 +44,11 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 ./scripts/50-install-sonarqube.sh # SonarQube 설치 + CI 토큰 발급
 ./scripts/51-verify-gates.sh      # 품질·보안 게이트 차단 검증
 
+./scripts/60-create-airgap-cluster.sh # 폐쇄망 클러스터 (create|isolate|delete)
+./scripts/61-export-bundle.sh         # 반출 번들 생성 (약 3.6GB)
+./scripts/62-import-bundle.sh         # 폐쇄망 반입 (verify-only 로 무결성만)
+./scripts/63-verify-airgap.sh         # 폐쇄망 검증 20개
+
 ./scripts/99-teardown.sh       # 클러스터 삭제
 ```
 
@@ -58,6 +64,17 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | http://argocd.localtest.me | ArgoCD UI (`admin` / 설치 스크립트가 출력) |
 | http://harbor.localtest.me | Harbor UI (`admin` / `Harbor12345`) |
 | http://sonarqube.localtest.me | SonarQube UI (`admin` / `SonarPoC12345!`) |
+
+폐쇄망(`.airgap`)은 공개 DNS 에 없다. 점프 호스트에서 접근한다.
+
+```bash
+docker exec -it airgap-jump sh
+curl -s http://eshop.airgap/ | head
+```
+
+> 호스트 브라우저로 보려면 `/etc/hosts` 에 `127.0.0.1 eshop.airgap harbor.airgap
+> argocd.airgap gitlab.airgap` 을 넣고 `:8080` 으로 접근한다.
+> 개발계가 80 을 쓰고 있어 폐쇄망은 8080/8443 으로 노출한다.
 
 필요 도구: `docker` `kind` `kubectl` `helm` — `brew install kind helm`
 
@@ -83,8 +100,8 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | 1 | 커밋 → 빌드 → 레지스트리 푸시 → ArgoCD 자동 배포 (무인) | **달성** — 커밋 하나로 약 4분 ([006](docs/006-phase4-ci-pipeline.md)) |
 | 2 | `selfHeal: true` — 클러스터 수동 변경분 자동 복구 | **달성** — 약 4초 만에 복구 ([004](docs/004-phase2-argocd-gitops.md)) |
 | 3 | 이미지 취약점 스캔이 파이프라인을 실제로 차단 | **달성** — Critical 검출 시 pull 거부 ([005](docs/005-phase3-harbor-registry.md)) |
-| 4 | 인터넷 없이 반입 이미지만으로 배포 (폐쇄망) | 미착수 |
-| 5 | 파트너사별 네임스페이스 · 레지스트리 · RBAC 격리 | 미착수 |
+| 4 | 인터넷 없이 반입 이미지만으로 배포 (폐쇄망) | **달성** — 번들 3.6GB 로 파드 11개 기동 ([009](docs/009-phase6a-airgap-deployment.md)) |
+| 5 | 파트너사별 네임스페이스 · 레지스트리 · RBAC 격리 | 부분 — Harbor 프로젝트 격리만 (Phase 7에서 완성) |
 
 ---
 
@@ -100,7 +117,8 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | 3 | Harbor 레지스트리 | [#10](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/10) | [#12](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/12) | [005](docs/005-phase3-harbor-registry.md) | 완료 |
 | 4 | CI (빌드·테스트·푸시) | [#13](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/13) | [#15](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/15) | [006](docs/006-phase4-ci-pipeline.md) | 골격 완료 |
 | 5 | 품질/보안 게이트 | [#18](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/18) | [#20](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/20) | [008](docs/008-phase5-quality-gates.md) | 완료 |
-| 6 | 폐쇄망 시뮬레이션 | | | | 대기 |
+| 6a | 폐쇄망 반출입 · 배포 | [#22](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/22) | [#23](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/23) | [009](docs/009-phase6a-airgap-deployment.md) | 완료 |
+| 6b | 패키지 · 베이스이미지 · Trivy DB 미러링 | | | | 대기 |
 | 7 | 파트너 격리 · 멀티테넌시 | | | | 대기 |
 
 ### 미해결 항목
@@ -109,6 +127,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 |---|---|---|
 | [#16](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/16) | High 등급 취약 패키지 다수 — 대부분 전이 의존성 | Harbor 게이트는 Critical 만 차단해 배포에는 지장 없음 |
 | [#19](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/19) | 테스트 커버리지 미측정 | 테스트는 있으나 얼마나 덮는지 모른다. 게이트 조건으로 쓰려면 필요 |
+| — | 개발계 SonarQube 를 내린 상태 | Phase 6a 메모리 확보용. `scripts/50-install-sonarqube.sh` 로 복구되나 PVC 가 함께 지워져 CI 를 한 번 돌려야 분석 결과가 다시 쌓인다 |
 
 ---
 
@@ -131,7 +150,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 |---|---|
 | 개발 머신 | macOS (Apple Silicon, arm64) · 12 Core / 64 GB |
 | 컨테이너 런타임 | Docker Desktop 4.85 (VM 메모리 24 GB 할당) |
-| 클러스터 | kind · Kubernetes v1.36.1 · containerd 2.3.1 · 노드 3대 |
+| 클러스터 | kind · Kubernetes v1.36.1 · containerd 2.3.1 · 개발계 3대 + 폐쇄망 2대 |
 | 애플리케이션 | .NET 8 · MassTransit 8.1.3 · RabbitMQ · YARP |
 | CI | GitHub Actions · self-hosted 러너 (로컬) |
 | 파이프라인 | 테스트 33개 → SonarQube → 빌드 → Harbor → 스캔 → 매니페스트 |
@@ -139,3 +158,5 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 > SQL Server 이미지는 arm64 빌드가 없어 Rosetta 변환으로 동작한다.
 > 기능에는 문제가 없으나 성능 수치는 신뢰할 수 없다.
 > 실측 근거는 [PLAN.md의 Phase 1 리스크](PLAN.md#phase-1-리스크) 참고.
+> Harbor 도 arm64 이미지가 없어 같은 방식으로 돈다. 그래서 폐쇄망 반출 번들이
+> 아키텍처별로 나뉜다 ([009](docs/009-phase6a-airgap-deployment.md)).
