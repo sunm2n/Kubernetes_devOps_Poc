@@ -120,11 +120,25 @@ fi
 
 # Ordering 이 이벤트를 소비해 주문을 만들 때까지 기다린다.
 # 비동기 경로이므로 즉시 조회하면 아직 없을 수 있다.
+#
+# 목록(/orders)이 아니라 이름으로 직접 조회한다.
+# 목록은 페이지 크기 10으로 잘려 나오고, 검증을 반복할수록 주문이 쌓여
+# 새로 만든 것이 뒤 페이지로 밀린다. 실제로 11번째 주문부터 1페이지에서 사라져
+# 이벤트 흐름은 정상인데 검증만 실패했다.
+#
+# 이 엔드포인트는 없는 이름에도 HTTP 200 을 준다. 본문으로 판단해야 한다.
+#   있음: {"orders":[{...}]}      없음: {"orders":[]}
 FOUND=""
 for _ in $(seq 1 15); do
-  if curl -s --max-time 15 "${API}/ordering-service/orders" 2>/dev/null | grep -q "${USER}"; then
-    FOUND="1"; break
-  fi
+  COUNT="$(curl -s --max-time 15 "${API}/ordering-service/orders/${USER}" 2>/dev/null \
+    | python3 -c "
+import json,sys
+try:
+    print(len(json.load(sys.stdin).get('orders', [])))
+except Exception:
+    print(0)
+" 2>/dev/null || echo 0)"
+  if [[ "${COUNT}" -gt 0 ]]; then FOUND="1"; break; fi
   sleep 2
 done
 
