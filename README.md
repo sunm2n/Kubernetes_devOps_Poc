@@ -17,6 +17,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | [004-phase2-argocd-gitops.md](docs/004-phase2-argocd-gitops.md) | Phase 2 — ArgoCD GitOps, selfHeal·prune 실측, 자원 추적 방식 |
 | [005-phase3-harbor-registry.md](docs/005-phase3-harbor-registry.md) | Phase 3 — Harbor, 취약점 게이트 실증, containerd 레지스트리 신뢰 |
 | [006-phase4-ci-pipeline.md](docs/006-phase4-ci-pipeline.md) | Phase 4 — CI 파이프라인, 캐시된 이미지가 게이트를 거치지 않는 문제 |
+| [007-app-repo-cleanup.md](docs/007-app-repo-cleanup.md) | 앱 저장소 정리 — Critical CVE 해소, health 엔드포인트, CI 재시도 |
 
 ## 빠른 시작
 
@@ -87,6 +88,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | Phase | 내용 | 이슈 | PR | 문서 | 상태 |
 |---|---|---|---|---|---|
 | — | 저장소 초기 구성 | — | — | [001](docs/001-repo-bootstrap.md) | 완료 |
+| — | 앱 저장소 정리 (CVE·health·CI) | [#5](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/5) [#11](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/11) [#14](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/14) | [#17](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/17) | [007](docs/007-app-repo-cleanup.md) | 완료 |
 | 0 | 로컬 kind 클러스터 | [#1](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/1) | [#3](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/3) | [002](docs/002-phase0-kind-cluster.md) | 완료 |
 | 1 | EShopMicroservices Helm 차트화 | [#4](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/4) | [#6](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/6) | [003](docs/003-phase1-helm-charts.md) | 완료 |
 | 2 | ArgoCD GitOps | [#7](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/7) | [#8](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/8) | [004](docs/004-phase2-argocd-gitops.md) | 완료 |
@@ -100,9 +102,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 
 | 이슈 | 내용 | 영향 |
 |---|---|---|
-| [#5](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/5) | `yarp-apigateway` · `discount-grpc` · `shopping-web` 에 `/health` 없음 — TCP 프로브로 대체 중 | ArgoCD 동기화 판정의 정확도에 영향. Phase 4 처리 권장 |
-| [#11](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/11) | `Marten` · `Refit` 의 Critical CVE — 현재 허용목록으로 통과시키는 중 | 베이스 이미지와 달리 버전 상향으로 해결 가능. Phase 5 처리 권장 |
-| [#14](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/14) | CI 빌드가 베이스 이미지 pull 실패로 간헐 중단 | 재시도 필요. Phase 6 미러링이 근본 해결 |
+| [#16](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/16) | High 등급 취약 패키지 다수 — 대부분 전이 의존성 | Harbor 게이트는 Critical 만 차단해 배포에는 지장 없음. Phase 5 이후 권장 |
 
 ---
 

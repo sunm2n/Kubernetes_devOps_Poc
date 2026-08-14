@@ -94,9 +94,11 @@ apps:
     image: discount-grpc
     replicas: 1
     port: 8080
-    # HTTP/2 전용이라 HTTP 프로브를 쓸 수 없고 /health 엔드포인트도 없다.
+    # HTTP/2 전용이라 HTTP 프로브를 쓸 수 없다.
+    # 앱이 gRPC 표준 프로토콜(grpc.health.v1.Health)을 구현하고 있고,
+    # 그 검사에 DbContext 연결 확인이 포함돼 있다.
     probe:
-      type: tcp
+      type: grpc
     config:
       ASPNETCORE_HTTP_PORTS: "8080"
     secrets:
@@ -128,9 +130,11 @@ apps:
     image: yarp-apigateway
     replicas: 1
     port: 8080
-    # YARP 자체에는 health 엔드포인트가 없다.
+    # 게이트웨이 자체의 응답 가능 여부만 본다.
+    # 업스트림 상태는 각 서비스가 자기 /health 로 판단한다.
     probe:
-      type: tcp
+      type: http
+      path: /health
     config:
       ASPNETCORE_HTTP_PORTS: "8080"
       # appsettings.json 의 목적지가 catalog.api 처럼 점이 든 이름이라
@@ -145,7 +149,8 @@ apps:
     replicas: 1
     port: 8080
     probe:
-      type: tcp
+      type: http
+      path: /health
     config:
       ASPNETCORE_HTTP_PORTS: "8080"
       ApiSettings__GatewayAddress: "http://yarp-apigateway:8080"
