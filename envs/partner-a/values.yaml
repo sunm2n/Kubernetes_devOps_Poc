@@ -1,0 +1,60 @@
+# 파트너사 A 환경 값 — charts/eshop 을 이 테넌트에 맞게 덮어쓴다.
+#
+# 본사(envs/dev)와 구조가 같다. 달라지는 것은 격리에 관한 것뿐이다.
+#
+#   1. 이미지를 본사 프로젝트가 아니라 자기 프로젝트에서 받는다 (private)
+#   2. NetworkPolicy 와 RBAC 를 켠다
+#   3. 호스트 이름이 파트너사별로 나뉜다
+#
+# 파트너사 B(envs/partner-b)와의 차이는 이름뿐이다.
+# 같은 값 파일 구조로 15곳까지 늘어날 수 있어야 한다는 것이 이 단계의 전제다.
+
+global:
+  # 파트너사 전용 Harbor 프로젝트.
+  #
+  # private 이라 익명 pull 이 안 된다. 본사 erp-hq 는 public 이었고
+  # 그래서 pull secret 없이 돌았는데, 여기서는 자격증명이 필요하다.
+  # 그 자격증명이 격리의 실체다 — 이 계정으로는 partner-b 를 받을 수 없다.
+  imageRegistry: harbor.localtest.me/partner-a
+
+  # 본사가 배포한 태그. 파트너사가 스스로 빌드하지 않는다.
+  # scripts/70-setup-partners.sh 가 erp-hq 에서 이 태그를 복사해 온다.
+  imageTag: 2a960c41e21e
+
+  imagePullPolicy: IfNotPresent
+
+  # Harbor robot 계정으로 만든 Secret. 클러스터에만 있고 Git 에는 없다.
+  imagePullSecrets:
+    - harbor-partner-a
+
+  aspnetcoreEnvironment: Development
+
+# ── 격리 ──────────────────────────────────────────────────────────
+tenant:
+  networkPolicy:
+    enabled: true
+    ingressNamespace: ingress-nginx
+  rbac:
+    enabled: true
+    serviceAccountName: tenant-partner-a
+
+ingress:
+  enabled: true
+  # localtest.me 는 하위 도메인을 전부 127.0.0.1 로 해석한다.
+  # 파트너사마다 이름을 나눠도 hosts 파일을 건드릴 필요가 없다.
+  host: eshop.partner-a.localtest.me
+  gatewayHost: api.eshop.partner-a.localtest.me
+
+apps:
+  catalog-api:
+    replicas: 1
+  basket-api:
+    replicas: 1
+  discount-grpc:
+    replicas: 1
+  ordering-api:
+    replicas: 1
+  yarp-apigateway:
+    replicas: 1
+  shopping-web:
+    replicas: 1

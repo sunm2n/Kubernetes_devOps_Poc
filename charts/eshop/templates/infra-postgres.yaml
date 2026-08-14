@@ -41,6 +41,7 @@ spec:
       labels:
         {{- include "eshop.selectorLabels" (dict "Chart" $.Chart "Release" $.Release "component" $name) | nindent 8 }}
     spec:
+      {{- include "eshop.imagePullSecrets" $ | nindent 6 }}
       securityContext:
         # postgres 이미지의 실행 사용자(uid 999)가 볼륨에 쓸 수 있어야 한다.
         # kind 의 기본 스토리지(local-path)는 호스트 디렉터리를 root 소유로 만들기 때문에

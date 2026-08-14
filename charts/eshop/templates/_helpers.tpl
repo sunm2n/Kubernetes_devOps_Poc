@@ -23,6 +23,23 @@ app.kubernetes.io/component: {{ .component }}
 {{- end }}
 
 {{/*
+비공개 레지스트리에서 이미지를 받기 위한 pull secret.
+
+본사(erp-hq)는 public 프로젝트라 필요 없고, 파트너사는 private 프로젝트라 필요하다.
+Secret 자체는 이 차트가 만들지 않는다. 이 저장소가 PUBLIC 이므로
+자격증명이 Git 에 들어가면 안 된다. scripts/70-setup-partners.sh 가
+클러스터에 직접 만들고, 여기서는 이름만 참조한다.
+*/}}
+{{- define "eshop.imagePullSecrets" -}}
+{{- with .Values.global.imagePullSecrets }}
+imagePullSecrets:
+  {{- range . }}
+  - name: {{ . }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
 의존 서비스가 열릴 때까지 기다리는 initContainer.
 호출부에서 .waitFor(호스트:포트 목록)와 .root(최상위 컨텍스트)를 넘긴다.
 

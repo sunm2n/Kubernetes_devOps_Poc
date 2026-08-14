@@ -1,0 +1,49 @@
+# EShopMicroservices — 파트너사 B
+#
+# eshop-partner-a.yaml 과 이름 말고는 같다.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: eshop-partner-b
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: partner-b
+
+  sources:
+    - repoURL: https://github.com/sunm2n/Kubernetes_devOps_Poc.git
+      targetRevision: dev
+      path: charts/eshop
+      helm:
+        valueFiles:
+          - $values/envs/partner-b/values.yaml
+
+    - repoURL: https://github.com/sunm2n/Kubernetes_devOps_Poc.git
+      targetRevision: dev
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: partner-b
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+    syncOptions:
+      - ServerSideApply=true
+
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates

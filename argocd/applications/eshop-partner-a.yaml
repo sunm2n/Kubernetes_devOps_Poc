@@ -1,0 +1,58 @@
+# EShopMicroservices — 파트너사 A
+#
+# 본사(eshop-dev.yaml)와 구조가 같다. 달라지는 것은 세 가지다.
+#
+#   project      default 가 아니라 partner-a. 배포 가능 범위가 제한된다
+#   valueFiles   envs/partner-a/values.yaml
+#   namespace    partner-a
+#
+# CreateNamespace 를 쓰지 않는다.
+# 네임스페이스와 pull secret 은 scripts/70-setup-partners.sh 가 먼저 만든다.
+# 파드가 뜨기 전에 secret 이 있어야 이미지를 받을 수 있고,
+# AppProject 가 클러스터 범위 자원을 막고 있어 여기서 만들 수도 없다.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: eshop-partner-a
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: partner-a
+
+  sources:
+    - repoURL: https://github.com/sunm2n/Kubernetes_devOps_Poc.git
+      targetRevision: dev
+      path: charts/eshop
+      helm:
+        valueFiles:
+          - $values/envs/partner-a/values.yaml
+
+    - repoURL: https://github.com/sunm2n/Kubernetes_devOps_Poc.git
+      targetRevision: dev
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: partner-a
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+    syncOptions:
+      - ServerSideApply=true
+
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates
