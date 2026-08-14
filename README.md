@@ -18,6 +18,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | [005-phase3-harbor-registry.md](docs/005-phase3-harbor-registry.md) | Phase 3 — Harbor, 취약점 게이트 실증, containerd 레지스트리 신뢰 |
 | [006-phase4-ci-pipeline.md](docs/006-phase4-ci-pipeline.md) | Phase 4 — CI 파이프라인, 캐시된 이미지가 게이트를 거치지 않는 문제 |
 | [007-app-repo-cleanup.md](docs/007-app-repo-cleanup.md) | 앱 저장소 정리 — Critical CVE 해소, health 엔드포인트, CI 재시도 |
+| [008-phase5-quality-gates.md](docs/008-phase5-quality-gates.md) | Phase 5 — 단위 테스트·SonarQube·스캔 게이트, 실패 시 차단 실증 |
 
 ## 빠른 시작
 
@@ -39,6 +40,9 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 ./scripts/40-setup-runner.sh   # CI 러너 설치·등록 (status/stop/remove)
 ./scripts/41-verify-ci.sh      # 커밋 → 배포 전 구간 검증
 
+./scripts/50-install-sonarqube.sh # SonarQube 설치 + CI 토큰 발급
+./scripts/51-verify-gates.sh      # 품질·보안 게이트 차단 검증
+
 ./scripts/99-teardown.sh       # 클러스터 삭제
 ```
 
@@ -53,6 +57,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | http://api.eshop.localtest.me/catalog-service/products | API 게이트웨이 |
 | http://argocd.localtest.me | ArgoCD UI (`admin` / 설치 스크립트가 출력) |
 | http://harbor.localtest.me | Harbor UI (`admin` / `Harbor12345`) |
+| http://sonarqube.localtest.me | SonarQube UI (`admin` / `SonarPoC12345!`) |
 
 필요 도구: `docker` `kind` `kubectl` `helm` — `brew install kind helm`
 
@@ -94,7 +99,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | 2 | ArgoCD GitOps | [#7](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/7) | [#8](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/8) | [004](docs/004-phase2-argocd-gitops.md) | 완료 |
 | 3 | Harbor 레지스트리 | [#10](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/10) | [#12](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/12) | [005](docs/005-phase3-harbor-registry.md) | 완료 |
 | 4 | CI (빌드·테스트·푸시) | [#13](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/13) | [#15](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/15) | [006](docs/006-phase4-ci-pipeline.md) | 골격 완료 |
-| 5 | 품질/보안 게이트 | | | | 대기 |
+| 5 | 품질/보안 게이트 | [#18](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/18) | [#19](https://github.com/sunm2n/Kubernetes_devOps_Poc/pull/19) | [008](docs/008-phase5-quality-gates.md) | 완료 |
 | 6 | 폐쇄망 시뮬레이션 | | | | 대기 |
 | 7 | 파트너 격리 · 멀티테넌시 | | | | 대기 |
 
@@ -102,7 +107,8 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 
 | 이슈 | 내용 | 영향 |
 |---|---|---|
-| [#16](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/16) | High 등급 취약 패키지 다수 — 대부분 전이 의존성 | Harbor 게이트는 Critical 만 차단해 배포에는 지장 없음. Phase 5 이후 권장 |
+| [#16](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/16) | High 등급 취약 패키지 다수 — 대부분 전이 의존성 | Harbor 게이트는 Critical 만 차단해 배포에는 지장 없음 |
+| [#20](https://github.com/sunm2n/Kubernetes_devOps_Poc/issues/20) | 테스트 커버리지 미측정 | 테스트는 있으나 얼마나 덮는지 모른다. 게이트 조건으로 쓰려면 필요 |
 
 ---
 
@@ -128,6 +134,7 @@ ERP 클라우드 네이티브 아키텍처 문서(`erp-devops-architecture.pptx`
 | 클러스터 | kind · Kubernetes v1.36.1 · containerd 2.3.1 · 노드 3대 |
 | 애플리케이션 | .NET 8 · MassTransit 8.1.3 · RabbitMQ · YARP |
 | CI | GitHub Actions · self-hosted 러너 (로컬) |
+| 파이프라인 | 테스트 33개 → SonarQube → 빌드 → Harbor → 스캔 → 매니페스트 |
 
 > SQL Server 이미지는 arm64 빌드가 없어 Rosetta 변환으로 동작한다.
 > 기능에는 문제가 없으나 성능 수치는 신뢰할 수 없다.
