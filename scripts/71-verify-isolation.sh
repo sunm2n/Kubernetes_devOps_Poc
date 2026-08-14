@@ -144,38 +144,50 @@ else
 fi
 
 # 검증용 파드를 파트너 A 네임스페이스에 띄운다.
-# 이미지는 A 의 프로젝트에서 받는다. 다른 곳에서 받아오면
-# pull secret 없이 뜨는 파드가 되어 조건 2와 어긋난다.
+#
+# busybox 를 쓴다. 애플리케이션 이미지(mcr.microsoft.com/dotnet/aspnet 계열)에는
+# curl · wget · nc 가 없다. 그것으로 시험하면 명령이 없어서 실패한 것을
+# 네트워크가 막힌 것으로 읽게 되고, 정책이 하나도 걸려 있지 않아도
+# "차단됨" 이 나온다. 실제로 처음에 그렇게 통과했다.
+#
+# 차단을 확인하는 검증은 같은 방법으로 "열려야 하는 것" 도 함께 봐야 한다.
+# 아래의 같은 네임스페이스 호출이 그 대조군이다.
 PROBE="isolation-probe"
 kubectl delete pod "${PROBE}" -n "${A}" --ignore-not-found --wait=true >/dev/null 2>&1 || true
-kubectl run "${PROBE}" -n "${A}" \
-  --image="${HARBOR_HOST}/${A}/catalog-api:${IMAGE_TAG}" \
-  --overrides="{\"spec\":{\"imagePullSecrets\":[{\"name\":\"harbor-${A}\"}]}}" \
+kubectl run "${PROBE}" -n "${A}" --image=busybox:1.37 \
   --command -- sleep 900 >/dev/null 2>&1 || true
 
-if kubectl wait --for=condition=Ready "pod/${PROBE}" -n "${A}" --timeout=120s >/dev/null 2>&1; then
-  # 같은 네임스페이스 안은 통해야 한다.
-  # 이것까지 막히면 정책이 과해서 애플리케이션이 못 도는 것이다.
-  if kubectl exec "${PROBE}" -n "${A}" -- timeout 8 \
-       curl -sf -o /dev/null "http://catalog-api:8080/health" >/dev/null 2>&1; then
-    pass "${A} 안에서 catalog-api 호출 성공 (같은 테넌트 통신 정상)"
+if kubectl wait --for=condition=Ready "pod/${PROBE}" -n "${A}" --timeout=150s >/dev/null 2>&1; then
+  # 대조군. 같은 네임스페이스 안은 통해야 한다.
+  # 이것까지 막히면 정책이 과해서 애플리케이션이 못 도는 것이고,
+  # 아래의 "차단됨" 들도 믿을 수 없게 된다.
+  if kubectl exec "${PROBE}" -n "${A}" -- timeout 8 nc -z -w3 catalog-api 8080 >/dev/null 2>&1; then
+    pass "${A} 안에서 catalog-api 연결 성공 (대조군 — 같은 테넌트 통신 정상)"
   else
-    fail "${A} 안에서 catalog-api 를 부르지 못한다 — 정책이 과하다"
+    fail "${A} 안에서 catalog-api 에 닿지 못한다 — 정책이 과하다"
   fi
 
-  # 다른 테넌트는 막혀야 한다.
+  # 다른 파트너는 막혀야 한다.
   if kubectl exec "${PROBE}" -n "${A}" -- timeout 8 \
-       curl -sf -o /dev/null "http://catalog-api.${B}.svc.cluster.local:8080/health" >/dev/null 2>&1; then
-    fail "${A} 파드가 ${B} 의 catalog-api 를 호출했다 — 네트워크 격리 실패"
+       nc -z -w3 "catalog-api.${B}.svc.cluster.local" 8080 >/dev/null 2>&1; then
+    fail "${A} 파드가 ${B} 의 catalog-api 에 연결했다 — 네트워크 격리 실패"
   else
     pass "${A} → ${B}/catalog-api 차단됨"
   fi
 
-  # 이름 해석은 되지만 연결이 안 되는 것이 정상이다.
-  # 해석 자체가 안 되면 DNS 정책이 잘못된 것이고, 그때는
-  # 격리가 아니라 고장이다.
+  # 본사도 막혀야 한다.
+  # 파트너끼리만 막고 본사는 열어두면, 파트너가 본사 DB 에 닿는 경로가 남는다.
   if kubectl exec "${PROBE}" -n "${A}" -- timeout 8 \
-       getent hosts "catalog-api.${B}.svc.cluster.local" >/dev/null 2>&1; then
+       nc -z -w3 catalog-api.eshop.svc.cluster.local 8080 >/dev/null 2>&1; then
+    fail "${A} 파드가 본사 catalog-api 에 연결했다"
+  else
+    pass "${A} → 본사(eshop)/catalog-api 차단됨"
+  fi
+
+  # 이름 해석은 되지만 연결이 안 되는 것이 정상이다.
+  # 해석 자체가 안 되면 차단의 원인이 네트워크 정책인지 DNS 인지 구분할 수 없다.
+  if kubectl exec "${PROBE}" -n "${A}" -- timeout 8 \
+       nslookup "catalog-api.${B}.svc.cluster.local" 2>/dev/null | grep -q 'Address'; then
     pass "DNS 는 동작 (차단 지점이 네트워크 정책이지 이름 해석이 아니다)"
   else
     fail "DNS 해석이 안 된다 — tenant-allow-dns 정책을 확인할 것"
@@ -243,6 +255,9 @@ fi
 # 실제로 넘어가 본다.
 PROBE_APP="isolation-probe-app"
 kubectl delete application "${PROBE_APP}" -n argocd --ignore-not-found --wait=true >/dev/null 2>&1 || true
+# 파트너 A 의 정상 Application 과 같은 형태로 만들되 목적지만 B 로 바꾼다.
+# 다른 곳을 틀리게 적으면 AppProject 가 아니라 그것 때문에 실패할 수 있고,
+# 그러면 막혔다는 결론이 엉뚱한 근거를 갖게 된다.
 cat <<EOF | kubectl apply -f - >/dev/null 2>&1 || true
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -251,23 +266,35 @@ metadata:
   namespace: argocd
 spec:
   project: ${A}
-  source:
-    repoURL: https://github.com/sunm2n/Kubernetes_devOps_Poc.git
-    targetRevision: dev
-    path: charts/eshop
-    helm:
-      valueFiles:
-        - ../../envs/${B}/values.yaml
+  sources:
+    - repoURL: https://github.com/sunm2n/Kubernetes_devOps_Poc.git
+      targetRevision: dev
+      path: charts/eshop
+      helm:
+        valueFiles:
+          - \$values/envs/${B}/values.yaml
+    - repoURL: https://github.com/sunm2n/Kubernetes_devOps_Poc.git
+      targetRevision: dev
+      ref: values
   destination:
     server: https://kubernetes.default.svc
     namespace: ${B}
+  syncPolicy:
+    automated: {}
 EOF
 
+# ArgoCD 는 이렇게 답한다.
+#
+#   InvalidSpecError: application destination server '...' and namespace 'partner-b'
+#   do not match any of the allowed destinations in project 'partner-a'
+#
+# 목적지 검증은 저장소를 읽기 전에 일어난다. 그래서 리비전이나 경로가
+# 무엇이든 이 오류가 먼저 나온다.
 VIOLATION=""
-for _ in $(seq 1 15); do
+for _ in $(seq 1 20); do
   COND="$(kubectl get application "${PROBE_APP}" -n argocd \
-    -o jsonpath='{range .status.conditions[*]}{.type}:{.message}{"\n"}{end}' 2>/dev/null || true)"
-  if echo "${COND}" | grep -qiE 'not permitted|is not allowed|denied'; then
+    -o jsonpath='{range .status.conditions[*]}{.type}: {.message}{"\n"}{end}' 2>/dev/null || true)"
+  if echo "${COND}" | grep -qiE 'do not match any of the allowed destinations|not permitted in project'; then
     VIOLATION="${COND}"
     break
   fi
