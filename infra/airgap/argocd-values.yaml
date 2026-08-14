@@ -1,0 +1,75 @@
+# ArgoCD Helm values — 폐쇄망 클러스터용
+#
+# 차트: argo/argo-cd 10.3.3 (번들의 charts/ 에서 설치)
+# 설치: scripts/62-import-bundle.sh
+#
+# 개발계와 결정적으로 다른 두 가지:
+#   1. 이미지를 quay.io 가 아니라 폐쇄망 Harbor 에서 받는다
+#   2. 감시 대상이 github.com 이 아니라 망 안의 GitLab 이다
+
+global:
+  domain: argocd.airgap
+
+  # quay.io 에 나갈 수 없다. 반입해 Harbor 에 올린 것을 쓴다.
+  # 이 값 하나가 controller·server·repoServer 에 함께 적용된다.
+  image:
+    repository: harbor.airgap/platform/argocd
+    tag: v3.5.1
+    imagePullPolicy: IfNotPresent
+
+redis:
+  image:
+    repository: harbor.airgap/platform/argocd-redis
+    tag: 8.6.4-alpine
+
+configs:
+  params:
+    server.insecure: true
+
+  cm:
+    # 개발계와 같은 이유로 짧게 둔다.
+    # 폐쇄망에서는 이유가 하나 더 있다. GitLab 이 클러스터 밖 컨테이너라
+    # webhook 을 걸 수 있기는 하지만, 반입 절차만으로 성립하는지 보려고
+    # 이번에는 폴링만 쓴다.
+    timeout.reconciliation: 60s
+
+server:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hostname: argocd.airgap
+    annotations:
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+redis-ha:
+  enabled: false
+
+controller:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+repoServer:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+# 반입 이미지를 늘리지 않기 위해 끈다.
+# dex 는 ghcr.io/dexidp/dex 를, applicationSet 은 별도 구성을 요구한다.
+applicationSet:
+  enabled: false
+
+notifications:
+  enabled: false
+
+dex:
+  enabled: false

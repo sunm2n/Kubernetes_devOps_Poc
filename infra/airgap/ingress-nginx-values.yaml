@@ -1,0 +1,54 @@
+# ingress-nginx Helm values — 폐쇄망 클러스터용
+#
+# 차트: ingress-nginx/ingress-nginx 4.15.1 (번들의 charts/ 에서 설치)
+# 설치: scripts/62-import-bundle.sh
+#
+# 개발계(infra/ingress-nginx/values.yaml)와 다른 점만 주석으로 남긴다.
+controller:
+  nodeSelector:
+    ingress-ready: "true"
+
+  hostPort:
+    enabled: true
+    ports:
+      http: 80
+      https: 443
+
+  service:
+    type: ClusterIP
+
+  watchIngressWithoutClass: true
+
+  ingressClassResource:
+    name: nginx
+    default: true
+
+  replicaCount: 1
+
+  # 다이제스트 고정을 뗀다.
+  #
+  # 차트 기본값은 controller:v1.15.1@sha256:594cee... 처럼 태그와 다이제스트를
+  # 함께 지정한다. 레지스트리가 있으면 다이제스트로 내용을 확인할 수 있지만,
+  # 폐쇄망에서는 노드에 직접 밀어 넣은(kind load) 이미지를 쓴다.
+  # 그때 containerd 는 태그만 가진 이미지 기록을 만들고,
+  # name@digest 로 요청하면 찾지 못해 ErrImageNeverPull 에 빠진다.
+  #
+  # 무엇을 받았는지는 번들의 MANIFEST.txt 가 sha256 으로 남긴다.
+  # 검증 지점이 실행 시점에서 반입 시점으로 옮겨간 것이지 사라진 것이 아니다.
+  image:
+    digest: ""
+
+  admissionWebhooks:
+    enabled: true
+    patch:
+      image:
+        digest: ""
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # 폐쇄망에는 아직 Prometheus 가 없다.
+  metrics:
+    enabled: false
